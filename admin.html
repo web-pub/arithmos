@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arithmos — Espace Admin</title>
+<link rel="icon" href="assets/logo-arithmos.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/admin.css">
+</head>
+<body class="admin-body">
+
+<header class="admin-header">
+  <div class="admin-header-left">
+    <a class="home-icon" href="index.html" aria-label="Accueil du site" title="Accueil du site">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11L12 3l9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
+    </a>
+    <div class="admin-title-block">
+      <div class="site-title">Arithmos</div>
+      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V03-002</span>
+    </div>
+  </div>
+  <div class="admin-user">
+    <span id="user-email">…</span>
+    <button id="logout-btn">Se déconnecter</button>
+  </div>
+</header>
+
+<nav class="admin-tabs" id="admin-tabs">
+  <button data-tab="dashboard" class="active">Tableau de bord</button>
+  <button data-tab="societes">Sociétés</button>
+  <button data-tab="comptes">Comptes annuels</button>
+  <button data-tab="acces">Accès</button>
+  <button data-tab="passwords" data-role="superadmin">Mots de passe</button>
+  <button data-tab="maintenance" data-role="superadmin">Maintenance</button>
+</nav>
+
+<main class="admin-main">
+
+  <!-- Tableau de bord -->
+  <section class="panel active" id="panel-dashboard">
+    <h2>Tableau de bord</h2>
+    <p class="panel-sub">Vue d'ensemble de l'espace Arithmos.</p>
+    <div class="stat-row">
+      <div class="stat-tile"><div class="num" id="stat-societes">–</div><div class="label">Sociétés</div></div>
+      <div class="stat-tile"><div class="num" id="stat-acces">–</div><div class="label">Accès résultats actifs</div></div>
+      <div class="stat-tile"><div class="num" id="stat-bilans">–</div><div class="label">Exercices importés</div></div>
+    </div>
+  </section>
+
+  <!-- Sociétés -->
+  <section class="panel" id="panel-societes">
+    <h2>Sociétés</h2>
+    <p class="panel-sub">Chaque société est un dossier comptable indépendant.</p>
+    <div class="toolbar">
+      <div></div>
+      <button class="btn-small" id="btn-new-societe">+ Nouvelle société</button>
+    </div>
+    <div id="societes-list"></div>
+  </section>
+
+  <!-- Comptes annuels -->
+  <section class="panel" id="panel-comptes">
+    <h2>Comptes annuels</h2>
+    <p class="panel-sub">Un exercice (une année) importé par société, à partir du modèle Excel.</p>
+    <div class="toolbar">
+      <div class="field" style="min-width:260px;margin:0;">
+        <label for="comptes-societe-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Société</label>
+        <select id="comptes-societe-select"></select>
+      </div>
+      <div style="display:flex;gap:10px;align-self:flex-end;">
+        <a class="btn-outline" href="assets/arithmos-modele-comptes-annuels.xlsx" download>Télécharger le modèle</a>
+        <button class="btn-small" id="btn-new-exercice">+ Importer un exercice</button>
+      </div>
+    </div>
+    <div id="exercices-list"></div>
+  </section>
+
+  <!-- Accès -->
+  <section class="panel" id="panel-acces">
+    <h2>Accès aux résultats</h2>
+    <p class="panel-sub">Les personnes ci-dessous peuvent consulter les résultats des sociétés qui leur sont ouvertes.</p>
+    <div class="toolbar">
+      <div></div>
+      <button class="btn-small" id="btn-new-acces">+ Donner un accès</button>
+    </div>
+    <div id="acces-list"></div>
+  </section>
+
+  <!-- Mots de passe (Super Admin) -->
+  <section class="panel" id="panel-passwords">
+    <h2>Mots de passe</h2>
+    <p class="panel-sub">Visible uniquement par le Super Admin.</p>
+    <div id="passwords-list"></div>
+  </section>
+
+  <!-- Maintenance (Super Admin) -->
+  <section class="panel" id="panel-maintenance">
+    <h2>Maintenance</h2>
+    <p class="panel-sub">Outils de réparation et d'administration technique.</p>
+    <div class="maintenance-card">
+      <div>
+        <h4>Recalcul des KPI</h4>
+        <p>Relance le calcul des indicateurs pour toutes les sociétés (utile après une mise à jour du moteur de calcul). Pas encore disponible — arrive avec le chantier KPI.</p>
+      </div>
+      <button class="btn-outline" disabled>Bientôt</button>
+    </div>
+    <div class="maintenance-card">
+      <div>
+        <h4>Dernières connexions</h4>
+        <p>Historique des connexions par compte, visible uniquement par le Super Admin. Pas encore disponible.</p>
+      </div>
+      <button class="btn-outline" disabled>Bientôt</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- Modal société -->
+<div class="modal-backdrop" id="modal-societe">
+  <div class="modal">
+    <h3 id="societe-modal-title">Nouvelle société</h3>
+    <form id="form-societe">
+      <input type="hidden" id="societe-id">
+      <div class="field">
+        <label for="societe-nom">Nom de la société *</label>
+        <input type="text" id="societe-nom" required>
+      </div>
+      <div class="field">
+        <label for="societe-forme">Forme juridique</label>
+        <input type="text" id="societe-forme" placeholder="SRL, ASBL, SA…">
+      </div>
+      <div class="field">
+        <label for="societe-numero">Numéro d'entreprise (BCE)</label>
+        <input type="text" id="societe-numero" placeholder="0123.456.789">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-outline" data-close-modal="modal-societe">Annuler</button>
+        <button type="submit" class="btn-small">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal import exercice -->
+<div class="modal-backdrop" id="modal-exercice">
+  <div class="modal">
+    <h3>Importer un exercice</h3>
+    <form id="form-exercice">
+      <div class="field">
+        <label for="exercice-societe">Société *</label>
+        <select id="exercice-societe" required></select>
+      </div>
+      <div class="field">
+        <label for="exercice-annee">Exercice (année) *</label>
+        <input type="number" id="exercice-annee" min="2000" max="2100" required>
+      </div>
+      <div class="field">
+        <label for="exercice-fichier">Fichier Excel (modèle Arithmos) *</label>
+        <input type="file" id="exercice-fichier" accept=".xlsx" required>
+        <small>Télécharge le modèle depuis l'onglet si tu ne l'as pas encore.</small>
+      </div>
+      <p class="login-msg" id="exercice-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-outline" data-close-modal="modal-exercice">Annuler</button>
+        <button type="submit" class="btn-small">Importer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal accès -->
+<div class="modal-backdrop" id="modal-acces">
+  <div class="modal">
+    <h3 id="acces-modal-title">Donner un accès</h3>
+    <form id="form-acces">
+      <input type="hidden" id="acces-uid">
+      <input type="hidden" id="acces-identifiant-original">
+      <div class="field">
+        <label for="acces-prenom">Prénom *</label>
+        <input type="text" id="acces-prenom" required>
+      </div>
+      <div class="field">
+        <label for="acces-nom">Nom *</label>
+        <input type="text" id="acces-nom" required>
+      </div>
+      <div class="field">
+        <label for="acces-email">E-mail *</label>
+        <input type="email" id="acces-email" required>
+      </div>
+      <div class="field">
+        <label for="acces-naissance">Date de naissance (pour le mot de passe suggéré)</label>
+        <input type="date" id="acces-naissance">
+      </div>
+      <div class="field">
+        <label for="acces-identifiant">Identifiant</label>
+        <input type="text" id="acces-identifiant">
+        <small>Suggestion automatique modifiable avant enregistrement.</small>
+      </div>
+      <div class="field">
+        <label for="acces-password">Mot de passe</label>
+        <div class="pw-wrap">
+          <input type="password" id="acces-password" autocomplete="new-password">
+          <button type="button" class="pw-toggle" data-toggle-password="acces-password" aria-label="Afficher le mot de passe">👁</button>
+        </div>
+        <small>Suggestion automatique, modifiable avant enregistrement.</small>
+      </div>
+      <div class="field">
+        <label>Sociétés accessibles</label>
+        <div class="checklist" id="acces-societes-checklist"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-outline" data-close-modal="modal-acces">Annuler</button>
+        <button type="submit" class="btn-small">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="assets/admin.js"></script>
+</body>
+</html>

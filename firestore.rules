@@ -1,0 +1,68 @@
+// Projet : Arithmos (arithmos-hla) — Version V03-002
+// Modèle de rôles : superadmin / admin / lecteur (stocké dans users/{uid}.role)
+// - superadmin & admin : gèrent les sociétés et les accès
+// - lecteur : consulte uniquement les sociétés listées dans son societesAutorisees[]
+// - users/{uid}/private/credentials : mot de passe en clair, lisible par le Super Admin uniquement
+//
+// Les comptes Super Admin / Admin sont créés manuellement depuis la console Firebase
+// (Authentication + document users/{uid} avec role: "superadmin" ou "admin"), jamais
+// depuis le site lui-même — seuls les comptes "lecteur" (accès résultats) sont créés
+// depuis l'espace Admin.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isSuperAdmin() {
+      return isSignedIn() && myRole() == 'superadmin';
+    }
+    function isAdminOrAbove() {
+      return isSignedIn() && (myRole() == 'superadmin' || myRole() == 'admin');
+    }
+
+    // ---- Sociétés ----
+    match /societes/{societeId} {
+      allow read: if isAdminOrAbove() ||
+        (isSignedIn() && societeId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.societesAutorisees);
+      allow create, update, delete: if isAdminOrAbove();
+
+      // Exercices comptables importés (chantier Import Excel)
+      match /exercices/{exerciceId} {
+        allow read: if isAdminOrAbove() ||
+          (isSignedIn() && societeId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.societesAutorisees);
+        allow write: if isAdminOrAbove();
+      }
+    }
+
+    // ---- Identifiants (mapping identifiant -> e-mail, pour se connecter sans taper d'e-mail) ----
+    // Lecture publique nécessaire : la page de connexion doit pouvoir résoudre l'identifiant
+    // en e-mail AVANT que la personne soit authentifiée. Ne contient qu'un e-mail, jamais de mot de passe.
+    match /identifiants/{identifiant} {
+      allow read: if true;
+      allow write: if isAdminOrAbove();
+    }
+
+    // ---- Utilisateurs (profils) ----
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdminOrAbove());
+      // Un compte "lecteur" ne peut pas changer son propre rôle ou ses sociétés autorisées.
+      allow update: if isAdminOrAbove() ||
+        (isSignedIn() && request.auth.uid == uid &&
+         request.resource.data.role == resource.data.role &&
+         request.resource.data.societesAutorisees == resource.data.societesAutorisees);
+      allow create, delete: if isAdminOrAbove();
+
+      // Mot de passe en clair : Super Admin uniquement.
+      match /private/credentials {
+        allow read, write: if isSuperAdmin();
+      }
+    }
+  }
+}
