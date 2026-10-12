@@ -20,7 +20,7 @@
     </a>
     <div class="admin-title-block">
       <div class="site-title">Arithmos</div>
-      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V08-001</span>
+      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V09-001</span>
     </div>
   </div>
   <div class="admin-user">
@@ -73,8 +73,9 @@
         <label for="comptes-societe-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Société</label>
         <select id="comptes-societe-select"></select>
       </div>
-      <div style="display:flex;gap:10px;align-self:flex-end;">
-        <a class="btn-outline" href="assets/arithmos-modele-comptes-annuels.xlsx" download>Télécharger le modèle</a>
+      <div style="display:flex;gap:10px;align-self:flex-end;flex-wrap:wrap;">
+        <a class="btn-outline" href="assets/arithmos-modele-comptes-annuels.xlsx" download>Modèle bilan BNB</a>
+        <a class="btn-outline" href="assets/arithmos-modele-balance-detaillee.xlsx" download>Modèle balance détaillée</a>
         <button class="btn-small" id="btn-new-exercice">+ Importer un exercice</button>
       </div>
     </div>
@@ -200,6 +201,13 @@
         <label for="societe-numero">Numéro d'entreprise (BCE)</label>
         <input type="text" id="societe-numero" placeholder="0123.456.789">
       </div>
+
+      <details>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;margin:6px 0 10px;">Mapping comptable (pour l'import "Balance comptable détaillée")</summary>
+        <p class="panel-sub" style="margin:0 0 10px;">Pour chaque rubrique, indique la ou les plages de numéros de compte à additionner (ex. <code>700000-709999</code>, séparées par une virgule si plusieurs plages). Pré-rempli avec des valeurs par défaut standards — à ajuster si le plan comptable de cette société diffère.</p>
+        <div id="mapping-fields"></div>
+      </details>
+
       <div class="modal-actions">
         <button type="button" class="btn-outline" data-close-modal="modal-societe">Annuler</button>
         <button type="submit" class="btn-small">Enregistrer</button>
@@ -222,9 +230,21 @@
         <input type="number" id="exercice-annee" min="2000" max="2100" required>
       </div>
       <div class="field">
+        <label>Type de fichier *</label>
+        <label style="display:block;font-weight:400;font-size:14px;margin:4px 0;">
+          <input type="radio" name="exercice-type" value="bnb" checked> Bilan déposé (BNB, schéma abrégé)
+        </label>
+        <label style="display:block;font-weight:400;font-size:14px;margin:4px 0 8px;">
+          <input type="radio" name="exercice-type" value="detaillee"> Balance comptable détaillée
+        </label>
+      </div>
+      <div class="field">
         <label for="exercice-fichier">Fichier Excel (modèle Arithmos) *</label>
         <input type="file" id="exercice-fichier" accept=".xlsx" required>
-        <small>Télécharge le modèle depuis l'onglet si tu ne l'as pas encore.</small>
+        <small>
+          <a id="lien-modele-bnb" href="assets/arithmos-modele-comptes-annuels.xlsx" download>Télécharger le modèle bilan BNB</a>
+          <a id="lien-modele-detaille" href="assets/arithmos-modele-balance-detaillee.xlsx" download style="display:none;">Télécharger le modèle balance détaillée</a>
+        </small>
       </div>
       <p class="login-msg" id="exercice-msg"></p>
       <div class="modal-actions">
