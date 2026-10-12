@@ -20,7 +20,7 @@
     </a>
     <div class="admin-title-block">
       <div class="site-title">Arithmos</div>
-      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V03-002</span>
+      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V08-001</span>
     </div>
   </div>
   <div class="admin-user">
@@ -33,7 +33,9 @@
   <button data-tab="dashboard" class="active">Tableau de bord</button>
   <button data-tab="societes">Sociétés</button>
   <button data-tab="comptes">Comptes annuels</button>
+  <button data-tab="kpi">KPI</button>
   <button data-tab="acces">Accès</button>
+  <button data-tab="contenu">Contenu</button>
   <button data-tab="passwords" data-role="superadmin">Mots de passe</button>
   <button data-tab="maintenance" data-role="superadmin">Maintenance</button>
 </nav>
@@ -79,6 +81,27 @@
     <div id="exercices-list"></div>
   </section>
 
+  <!-- KPI -->
+  <section class="panel" id="panel-kpi">
+    <h2>KPI</h2>
+    <p class="panel-sub">Indicateurs calculés automatiquement à partir des exercices importés, selon les ratios comptables usuels en Belgique.</p>
+    <div class="toolbar">
+      <div class="field" style="min-width:260px;margin:0;">
+        <label for="kpi-societe-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Société</label>
+        <select id="kpi-societe-select"></select>
+      </div>
+      <div class="field" style="min-width:160px;margin:0;" id="kpi-exercice-wrap">
+        <label for="kpi-exercice-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Exercice analysé</label>
+        <select id="kpi-exercice-select"></select>
+      </div>
+      <div class="field" style="margin:0;align-self:flex-end;display:flex;gap:8px;">
+        <button type="button" class="btn-outline" id="kpi-export-pdf">Export PDF</button>
+        <button type="button" class="btn-outline" id="kpi-export-excel">Export Excel</button>
+      </div>
+    </div>
+    <div id="kpi-content"></div>
+  </section>
+
   <!-- Accès -->
   <section class="panel" id="panel-acces">
     <h2>Accès aux résultats</h2>
@@ -88,6 +111,50 @@
       <button class="btn-small" id="btn-new-acces">+ Donner un accès</button>
     </div>
     <div id="acces-list"></div>
+  </section>
+
+  <!-- Contenu éditable des pages publiques -->
+  <section class="panel" id="panel-contenu">
+    <h2>Contenu</h2>
+    <p class="panel-sub">Textes affichés sur le site public (page d'accueil et page légale). Laisser un champ vide revient au texte par défaut.</p>
+    <form id="form-contenu">
+      <h3 class="kpi-group-title">Page d'accueil — en-tête</h3>
+      <div class="field"><label for="c-heroTitre">Titre principal</label><input type="text" id="c-heroTitre"></div>
+      <div class="field"><label for="c-heroTitreAccent">Titre (fin, mise en avant)</label><input type="text" id="c-heroTitreAccent"></div>
+      <div class="field"><label for="c-heroTexte">Texte sous le titre</label><textarea id="c-heroTexte" rows="2"></textarea></div>
+      <div class="field"><label for="c-baseline">Citation (bandeau sous l'en-tête)</label><input type="text" id="c-baseline"></div>
+
+      <h3 class="kpi-group-title">Page d'accueil — Comment ça marche</h3>
+      <div class="field"><label for="c-featuresKicker">Sur-titre de section</label><input type="text" id="c-featuresKicker"></div>
+      <div class="field"><label for="c-featuresTitre">Titre de section</label><input type="text" id="c-featuresTitre"></div>
+      <div class="field"><label for="c-feature1Titre">Étape 1 — titre</label><input type="text" id="c-feature1Titre"></div>
+      <div class="field"><label for="c-feature1Texte">Étape 1 — texte</label><textarea id="c-feature1Texte" rows="2"></textarea></div>
+      <div class="field"><label for="c-feature2Titre">Étape 2 — titre</label><input type="text" id="c-feature2Titre"></div>
+      <div class="field"><label for="c-feature2Texte">Étape 2 — texte</label><textarea id="c-feature2Texte" rows="2"></textarea></div>
+      <div class="field"><label for="c-feature3Titre">Étape 3 — titre</label><input type="text" id="c-feature3Titre"></div>
+      <div class="field"><label for="c-feature3Texte">Étape 3 — texte</label><textarea id="c-feature3Texte" rows="2"></textarea></div>
+      <div class="field"><label for="c-feature4Titre">Étape 4 — titre</label><input type="text" id="c-feature4Titre"></div>
+      <div class="field"><label for="c-feature4Texte">Étape 4 — texte</label><textarea id="c-feature4Texte" rows="2"></textarea></div>
+      <div class="field"><label for="c-feature5Titre">Étape 5 — titre</label><input type="text" id="c-feature5Titre"></div>
+      <div class="field"><label for="c-feature5Texte">Étape 5 — texte</label><textarea id="c-feature5Texte" rows="2"></textarea></div>
+
+      <h3 class="kpi-group-title">Page d'accueil — bandeau Accès</h3>
+      <div class="field"><label for="c-accesTitre">Titre</label><input type="text" id="c-accesTitre"></div>
+      <div class="field"><label for="c-accesTexte">Texte</label><textarea id="c-accesTexte" rows="2"></textarea></div>
+
+      <h3 class="kpi-group-title">Page légale</h3>
+      <div class="field"><label for="c-legalSecurisation">Sécurisation</label><textarea id="c-legalSecurisation" rows="2"></textarea></div>
+      <div class="field"><label for="c-legalConfidentialite">Déclaration de confidentialité</label><textarea id="c-legalConfidentialite" rows="2"></textarea></div>
+      <div class="field"><label for="c-legalEthique">Business Ethics &amp; Governance</label><textarea id="c-legalEthique" rows="2"></textarea></div>
+      <div class="field"><label for="c-legalCookies">Politique en matière de cookies</label><textarea id="c-legalCookies" rows="2"></textarea></div>
+      <div class="field"><label for="c-legalResponsabilite">Limitation de responsabilité</label><textarea id="c-legalResponsabilite" rows="2"></textarea></div>
+      <div class="field"><label for="c-legalMentions">Mentions légales / RGPD / CGV</label><textarea id="c-legalMentions" rows="2"></textarea></div>
+
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button type="submit" class="btn-small">Enregistrer le contenu</button>
+      </div>
+      <p class="login-msg" id="contenu-msg"></p>
+    </form>
   </section>
 
   <!-- Mots de passe (Super Admin) -->
@@ -103,18 +170,14 @@
     <p class="panel-sub">Outils de réparation et d'administration technique.</p>
     <div class="maintenance-card">
       <div>
-        <h4>Recalcul des KPI</h4>
-        <p>Relance le calcul des indicateurs pour toutes les sociétés (utile après une mise à jour du moteur de calcul). Pas encore disponible — arrive avec le chantier KPI.</p>
+        <h4>Calcul des KPI</h4>
+        <p>Les KPI sont recalculés automatiquement à chaque consultation de l'onglet KPI, à partir des derniers exercices importés — aucune action manuelle n'est nécessaire.</p>
       </div>
-      <button class="btn-outline" disabled>Bientôt</button>
+      <button class="btn-outline" disabled>Automatique</button>
     </div>
-    <div class="maintenance-card">
-      <div>
-        <h4>Dernières connexions</h4>
-        <p>Historique des connexions par compte, visible uniquement par le Super Admin. Pas encore disponible.</p>
-      </div>
-      <button class="btn-outline" disabled>Bientôt</button>
-    </div>
+    <h3 class="kpi-group-title">Dernières connexions</h3>
+    <p class="panel-sub" style="margin-top:-4px;">Un seul passage par compte est conservé — la connexion ou la dernière visite la plus récente.</p>
+    <div id="connexions-list"></div>
   </section>
 
 </main>
@@ -223,6 +286,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="module" src="assets/admin.js"></script>
 </body>
 </html>

@@ -31,32 +31,32 @@
 
   <section id="securisation">
     <h2>Sécurisation</h2>
-    <p>Les accès à l'espace Admin et aux données des sociétés sont protégés par authentification (Firebase Authentication) et par des règles d'accès vérifiant l'identité de chaque personne connectée. Cette page sera complétée avec le détail des mesures mises en place.</p>
+    <p data-content-key="legalSecurisation">Les accès à l'espace Admin et aux données des sociétés sont protégés par authentification (Firebase Authentication) et par des règles d'accès vérifiant l'identité de chaque personne connectée. Cette page sera complétée avec le détail des mesures mises en place.</p>
   </section>
 
   <section id="confidentialite">
     <h2>Déclaration de confidentialité</h2>
-    <p>Les données comptables importées sur Arithmos sont utilisées exclusivement pour le calcul des indicateurs présentés dans l'espace Admin et ne sont partagées avec aucun tiers. Contenu à compléter.</p>
+    <p data-content-key="legalConfidentialite">Les données comptables importées sur Arithmos sont utilisées exclusivement pour le calcul des indicateurs présentés dans l'espace Admin et ne sont partagées avec aucun tiers. Contenu à compléter.</p>
   </section>
 
   <section id="ethique">
     <h2>Business Ethics &amp; Governance</h2>
-    <p>Arithmos est édité et exploité dans le cadre de l'activité professionnelle d'Hélène Laruelle. Contenu à compléter.</p>
+    <p data-content-key="legalEthique">Arithmos est édité et exploité dans le cadre de l'activité professionnelle d'Hélène Laruelle. Contenu à compléter.</p>
   </section>
 
   <section id="cookies">
     <h2>Politique en matière de cookies</h2>
-    <p>Ce site n'utilise pas de cookies publicitaires ou de traçage. Contenu à compléter.</p>
+    <p data-content-key="legalCookies">Ce site n'utilise pas de cookies publicitaires ou de traçage. Contenu à compléter.</p>
   </section>
 
   <section id="responsabilite">
     <h2>Limitation de responsabilité</h2>
-    <p>Les indicateurs et analyses produits par Arithmos sont fournis à titre informatif et ne remplacent pas l'avis d'un professionnel du chiffre. Contenu à compléter.</p>
+    <p data-content-key="legalResponsabilite">Les indicateurs et analyses produits par Arithmos sont fournis à titre informatif et ne remplacent pas l'avis d'un professionnel du chiffre. Contenu à compléter.</p>
   </section>
 
   <section id="mentions">
     <h2>Mentions légales / RGPD / CGV</h2>
-    <p>Éditeur du site : Hélène Laruelle, Jehay, Belgique. Contenu à compléter (numéro d'entreprise, conditions générales, base légale RGPD).</p>
+    <p data-content-key="legalMentions">Éditeur du site : Hélène Laruelle, Jehay, Belgique. Contenu à compléter (numéro d'entreprise, conditions générales, base légale RGPD).</p>
   </section>
 </div>
 
@@ -69,5 +69,10 @@
     </div>
   </div>
 </footer>
+
+<script type="module">
+  import { applyContenuPublic } from "./assets/content.js";
+  applyContenuPublic();
+</script>
 </body>
 </html>

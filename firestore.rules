@@ -1,4 +1,4 @@
-// Projet : Arithmos (arithmos-hla) — Version V03-002
+// Projet : Arithmos (arithmos-hla) — Version V08-001
 // Modèle de rôles : superadmin / admin / lecteur (stocké dans users/{uid}.role)
 // - superadmin & admin : gèrent les sociétés et les accès
 // - lecteur : consulte uniquement les sociétés listées dans son societesAutorisees[]
@@ -39,6 +39,13 @@ service cloud.firestore {
           (isSignedIn() && societeId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.societesAutorisees);
         allow write: if isAdminOrAbove();
       }
+    }
+
+    // ---- Contenu éditable des pages publiques (textes de index.html / legal.html) ----
+    // Lecture publique nécessaire : ces textes s'affichent sur le site vitrine, avant toute connexion.
+    match /contenu/{docId} {
+      allow read: if true;
+      allow write: if isAdminOrAbove();
     }
 
     // ---- Identifiants (mapping identifiant -> e-mail, pour se connecter sans taper d'e-mail) ----
