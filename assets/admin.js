@@ -1,4 +1,4 @@
-// Arithmos — Espace Admin (V03-002)
+// Arithmos — Espace Admin (V08-001)
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signOut,
@@ -10,6 +10,9 @@ import {
   collection, collectionGroup, getDocs, query, orderBy, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { calculerKPI, GROUPES_KPI } from "./kpi.js";
+import { renderSparkline } from "./charts.js";
+import { exportKpiPdf, exportKpiExcel } from "./export.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -72,6 +75,9 @@ document.querySelectorAll('#admin-tabs button').forEach(btn => {
     document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'passwords') loadPasswordsPanel();
     if (btn.dataset.tab === 'comptes') loadExercices();
+    if (btn.dataset.tab === 'kpi') loadKpiSociete();
+    if (btn.dataset.tab === 'contenu') loadContenu();
+    if (btn.dataset.tab === 'maintenance') loadConnexions();
   });
 });
 
@@ -102,12 +108,12 @@ onAuthStateChanged(auth, async (user) => {
   const profile = profileSnap.data();
   currentRole = profile.role;
 
+  // Trace du passage sur le site (visible en Maintenance, Super Admin uniquement) — non bloquant.
+  updateDoc(doc(db, 'users', user.uid), { derniereConnexion: serverTimestamp() }).catch(() => {});
+
   if (currentRole === 'lecteur') {
-    // L'espace Admin n'est pas destiné aux comptes "accès résultats".
-    toast("Cet espace est réservé à l'équipe Admin.", true);
-    document.querySelector('.admin-main').innerHTML =
-      '<div class="empty-state">Ce compte a un accès "résultats" uniquement. L\'espace de consultation dédié arrive avec le chantier KPI.</div>';
-    document.getElementById('admin-tabs').style.display = 'none';
+    // L'espace Admin n'est pas destiné aux comptes "accès résultats" : on les renvoie vers leur propre espace.
+    window.location.href = 'resultats.html';
     return;
   }
 
@@ -132,10 +138,14 @@ function populateSocietesSelects() {
     : '<option value="">Crée d\'abord une société</option>';
   const compteSelect = document.getElementById('comptes-societe-select');
   const exerciceSelect = document.getElementById('exercice-societe');
+  const kpiSelect = document.getElementById('kpi-societe-select');
   const prevValue = compteSelect.value;
+  const prevKpiValue = kpiSelect.value;
   compteSelect.innerHTML = options;
   exerciceSelect.innerHTML = options;
+  kpiSelect.innerHTML = options;
   if (societesCache.some(s => s.id === prevValue)) compteSelect.value = prevValue;
+  if (societesCache.some(s => s.id === prevKpiValue)) kpiSelect.value = prevKpiValue;
 }
 
 function renderSocietes() {
@@ -637,4 +647,186 @@ async function loadDashboard() {
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---------- KPI ----------
+let kpiExercicesCache = []; // tous les exercices (triés par année) de la société actuellement affichée
+let kpiExportCourant = { nomSociete: '', annee: null, kpis: [] }; // pour les boutons Export PDF / Excel
+
+async function loadKpiSociete() {
+  const societeId = document.getElementById('kpi-societe-select').value;
+  const content = document.getElementById('kpi-content');
+  const exerciceSelect = document.getElementById('kpi-exercice-select');
+
+  if (!societeId) {
+    content.innerHTML = '<div class="empty-state">Crée d\'abord une société.</div>';
+    exerciceSelect.innerHTML = '';
+    return;
+  }
+
+  const snap = await getDocs(query(collection(db, 'societes', societeId, 'exercices'), orderBy('annee', 'asc')));
+  kpiExercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  if (kpiExercicesCache.length === 0) {
+    exerciceSelect.innerHTML = '';
+    content.innerHTML = `<div class="kpi-empty-exercice">Aucun exercice importé pour cette société. Importe un exercice depuis l'onglet <strong>Comptes annuels</strong> pour voir apparaître les KPI.</div>`;
+    return;
+  }
+
+  // Exercice analysé par défaut : le plus récent.
+  exerciceSelect.innerHTML = kpiExercicesCache
+    .slice().reverse()
+    .map(ex => `<option value="${ex.annee}">${ex.annee}</option>`).join('');
+
+  renderKpiContent();
+}
+
+document.getElementById('kpi-societe-select').addEventListener('change', loadKpiSociete);
+document.getElementById('kpi-exercice-select').addEventListener('change', renderKpiContent);
+
+function renderKpiContent() {
+  const content = document.getElementById('kpi-content');
+  const anneeSelectionnee = parseInt(document.getElementById('kpi-exercice-select').value, 10);
+  const exercice = kpiExercicesCache.find(ex => ex.annee === anneeSelectionnee) || kpiExercicesCache[kpiExercicesCache.length - 1];
+  if (!exercice) { content.innerHTML = ''; return; }
+
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux);
+
+  const societeId = document.getElementById('kpi-societe-select').value;
+  kpiExportCourant = {
+    nomSociete: societesCache.find(s => s.id === societeId)?.nom || '',
+    annee: exercice.annee,
+    kpis,
+  };
+
+  // Historique par KPI (toutes les années importées, pour la sparkline), aligné sur l'ordre chronologique.
+  const historiquesParCode = {};
+  kpiExercicesCache.forEach(ex => {
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux);
+    kpisEx.forEach(k => {
+      if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
+      historiquesParCode[k.code].push({ label: String(ex.annee), value: k.valeur });
+    });
+  });
+
+  const html = GROUPES_KPI.map(groupe => {
+    const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
+    const cards = kpisDuGroupe.map(k => {
+      const format = k.code.includes('liquidite') ? 'ratio' :
+        ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
+      return `
+        <div class="kpi-card">
+          <div class="kpi-card-head">
+            <h4>${escapeHtml(k.label)}</h4>
+            <span class="kpi-badge ${k.statut}">${labelStatut(k.statut)}</span>
+          </div>
+          <div class="kpi-value">${escapeHtml(k.affichage)}</div>
+          ${renderSparkline(historiquesParCode[k.code] || [], { format })}
+          <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
+        </div>`;
+    }).join('');
+    return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
+  }).join('');
+
+  content.innerHTML = html;
+}
+
+function labelStatut(statut) {
+  return { bon: 'Bon', correct: 'Correct', fragile: 'À surveiller', neutre: '—' }[statut] || '—';
+}
+
+document.getElementById('kpi-export-pdf').addEventListener('click', () => {
+  if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.annee, kpiExportCourant.kpis);
+});
+document.getElementById('kpi-export-excel').addEventListener('click', () => {
+  if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
+  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.annee, kpiExportCourant.kpis);
+});
+
+// ---------- Contenu éditable des pages publiques ----------
+const CONTENU_CLES = [
+  'heroTitre', 'heroTitreAccent', 'heroTexte', 'baseline',
+  'featuresKicker', 'featuresTitre',
+  'feature1Titre', 'feature1Texte', 'feature2Titre', 'feature2Texte',
+  'feature3Titre', 'feature3Texte', 'feature4Titre', 'feature4Texte',
+  'feature5Titre', 'feature5Texte',
+  'accesTitre', 'accesTexte',
+  'legalSecurisation', 'legalConfidentialite', 'legalEthique',
+  'legalCookies', 'legalResponsabilite', 'legalMentions',
+];
+
+async function loadContenu() {
+  const snap = await getDoc(doc(db, 'contenu', 'site'));
+  const data = snap.exists() ? snap.data() : {};
+  CONTENU_CLES.forEach(cle => {
+    const el = document.getElementById('c-' + cle);
+    if (el) el.value = data[cle] || '';
+  });
+}
+
+document.getElementById('form-contenu').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('contenu-msg');
+  msg.textContent = '';
+  msg.className = 'login-msg';
+
+  const payload = {};
+  CONTENU_CLES.forEach(cle => {
+    const el = document.getElementById('c-' + cle);
+    if (el) payload[cle] = el.value;
+  });
+
+  try {
+    await setDoc(doc(db, 'contenu', 'site'), payload, { merge: true });
+    msg.textContent = 'Contenu enregistré — visible immédiatement sur le site public.';
+    msg.classList.add('ok');
+    toast('Contenu mis à jour.');
+  } catch (err) {
+    msg.textContent = "Erreur : " + err.message;
+    msg.classList.add('error');
+  }
+});
+
+// ---------- Maintenance — Dernières connexions (Super Admin) ----------
+async function loadConnexions() {
+  if (currentRole !== 'superadmin') return;
+  const el = document.getElementById('connexions-list');
+  el.innerHTML = '<div class="empty-state">Chargement…</div>';
+
+  const snap = await getDocs(collection(db, 'users'));
+  const utilisateurs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  utilisateurs.sort((a, b) => {
+    const ta = a.derniereConnexion?.toMillis ? a.derniereConnexion.toMillis() : 0;
+    const tb = b.derniereConnexion?.toMillis ? b.derniereConnexion.toMillis() : 0;
+    return tb - ta;
+  });
+
+  if (utilisateurs.length === 0) {
+    el.innerHTML = '<div class="empty-state">Aucun compte pour l\'instant.</div>';
+    return;
+  }
+
+  const rows = utilisateurs.map(u => `
+    <tr>
+      <td><strong>${escapeHtml(u.prenom || '')} ${escapeHtml(u.nom || '')}</strong><br><span style="color:var(--ink-soft);font-size:12px;">${escapeHtml(u.identifiant || u.email || '')}</span></td>
+      <td style="text-transform:capitalize;">${escapeHtml(labelRole(u.role))}</td>
+      <td>${formatDateHeure(u.derniereConnexion)}</td>
+    </tr>`).join('');
+
+  el.innerHTML = `<table class="data-table">
+    <thead><tr><th>Personne</th><th>Rôle</th><th>Dernier passage</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function labelRole(role) {
+  return { superadmin: 'Super Admin', admin: 'Admin', lecteur: 'Accès résultats' }[role] || role || '—';
+}
+
+function formatDateHeure(timestamp) {
+  if (!timestamp?.toDate) return 'Jamais connecté';
+  const d = timestamp.toDate();
+  return d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' à ' + d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
 }

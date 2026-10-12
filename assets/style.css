@@ -2,13 +2,13 @@
    Arithmos — design tokens
    ========================================================================== */
 :root{
-  --navy-950:#0d1530;
-  --navy-900:#13204a;
-  --navy-800:#1c2c63;
-  --navy-700:#28398a;
-  --orange-500:#f2751d;
-  --orange-400:#ff9a4d;
-  --orange-100:#ffe4cc;
+  --navy-950:#0b1b32;
+  --navy-900:#122a46;
+  --navy-800:#1c3a5e;
+  --navy-700:#284c78;
+  --orange-500:#316a6c;
+  --orange-400:#4f8688;
+  --orange-100:#dcebea;
   --paper:#f5f3ee;
   --paper-line:rgba(20,32,74,.14);
   --ink:#101623;
