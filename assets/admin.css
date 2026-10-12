@@ -1,0 +1,141 @@
+/* ==========================================================================
+   Arithmos — espace Admin
+   ========================================================================== */
+.admin-body{background:var(--paper);min-height:100vh;}
+
+.admin-header{
+  background:var(--navy-950);
+  color:#fff;
+  padding:16px 28px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+.admin-header-left{display:flex;align-items:center;gap:16px;}
+.home-icon{
+  width:36px;height:36px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,.25);color:#fff;text-decoration:none;
+}
+.home-icon:hover{border-color:#fff;}
+.admin-title-block{line-height:1.25;}
+.admin-title-block .site-title{font-family:var(--font-display);font-size:18px;}
+.role-badge{
+  display:inline-block;margin-top:2px;
+  font-size:11px;font-weight:600;letter-spacing:.3px;
+  color:var(--orange-100);background:rgba(242,117,29,.18);
+  border:1px solid rgba(242,117,29,.4);
+  border-radius:20px;padding:2px 9px;
+}
+.role-badge + .admin-version{margin-left:6px;color:rgba(255,255,255,.45);font-size:11px;}
+
+.admin-user{display:flex;align-items:center;gap:14px;font-size:13px;color:rgba(255,255,255,.75);}
+.admin-user button{
+  background:none;border:1px solid rgba(255,255,255,.3);color:#fff;
+  border-radius:4px;padding:7px 14px;font-size:13px;cursor:pointer;
+}
+.admin-user button:hover{border-color:#fff;}
+
+.admin-tabs{
+  background:var(--navy-900);
+  display:flex;gap:4px;padding:0 24px;
+  overflow-x:auto;
+}
+.admin-tabs button{
+  background:none;border:none;color:rgba(255,255,255,.6);
+  padding:14px 16px;font-size:14px;font-family:var(--font-body);
+  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
+}
+.admin-tabs button:hover{color:#fff;}
+.admin-tabs button.active{color:#fff;border-bottom-color:var(--orange-500);font-weight:600;}
+
+.admin-main{max-width:1040px;margin:0 auto;padding:36px 28px 80px;}
+.panel{display:none;}
+.panel.active{display:block;}
+.panel h2{font-family:var(--font-display);font-size:24px;margin:0 0 6px;}
+.panel .panel-sub{color:var(--ink-soft);font-size:14px;margin:0 0 28px;}
+
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:8px;}
+.stat-tile{
+  background:#fff;border:1px solid var(--paper-line);border-radius:6px;
+  padding:20px;
+}
+.stat-tile .num{font-family:var(--font-display);font-size:30px;color:var(--navy-900);}
+.stat-tile .label{font-size:13px;color:var(--ink-soft);margin-top:4px;}
+
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap;}
+.btn-small{
+  background:var(--orange-500);color:#fff;border:none;border-radius:4px;
+  padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;
+}
+.btn-small:hover{background:var(--orange-400);}
+.btn-outline{
+  background:none;border:1px solid var(--paper-line);color:var(--ink);
+  border-radius:4px;padding:8px 14px;font-size:13px;cursor:pointer;
+}
+.btn-outline:hover{border-color:var(--navy-700);}
+.btn-danger{color:#c0392b;border-color:rgba(192,57,43,.35);}
+.btn-danger:hover{border-color:#c0392b;}
+
+table.data-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--paper-line);border-radius:6px;overflow:hidden;}
+table.data-table th{
+  text-align:left;font-size:12px;text-transform:none;color:var(--ink-soft);
+  background:#fbfaf7;padding:11px 14px;border-bottom:1px solid var(--paper-line);
+}
+table.data-table td{padding:12px 14px;border-bottom:1px solid var(--paper-line);font-size:14px;vertical-align:middle;}
+table.data-table tr:last-child td{border-bottom:none;}
+.row-actions{display:flex;gap:8px;}
+
+.empty-state{
+  text-align:center;color:var(--ink-soft);padding:48px 20px;
+  background:#fff;border:1px dashed var(--paper-line);border-radius:6px;font-size:14px;
+}
+
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(13,21,48,.55);
+  display:none;align-items:center;justify-content:center;z-index:50;padding:20px;
+}
+.modal-backdrop.open{display:flex;}
+.modal{
+  background:#fff;border-radius:6px;max-width:460px;width:100%;
+  padding:28px 30px;max-height:88vh;overflow-y:auto;
+}
+.modal h3{font-family:var(--font-display);font-size:19px;margin:0 0 18px;}
+.modal .field{margin-bottom:16px;}
+.modal .field label{display:block;font-size:13px;font-weight:600;margin-bottom:5px;}
+.modal .field input,.modal .field select{
+  width:100%;padding:9px 11px;border:1px solid var(--paper-line);border-radius:4px;font-size:14px;font-family:var(--font-body);
+}
+.modal .field small{display:block;color:var(--ink-soft);font-size:12px;margin-top:4px;}
+.login-msg{font-size:13px;margin:4px 0 0;min-height:16px;}
+.login-msg.error{color:#c0392b;}
+.login-msg.ok{color:#1e7d43;}
+.login-msg.warn{color:#9a6a00;}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;}
+.checklist{border:1px solid var(--paper-line);border-radius:4px;padding:10px 12px;max-height:160px;overflow-y:auto;}
+.checklist label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400 !important;padding:4px 0;}
+
+.pw-cell{display:flex;align-items:center;gap:8px;font-family:monospace;font-size:13px;}
+.pw-cell .masked{letter-spacing:2px;}
+.pw-reveal{background:none;border:none;cursor:pointer;font-size:13px;color:var(--ink-soft);}
+
+.maintenance-card{
+  background:#fff;border:1px solid var(--paper-line);border-radius:6px;
+  padding:20px 22px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.maintenance-card h4{margin:0 0 4px;font-size:15px;}
+.maintenance-card p{margin:0;color:var(--ink-soft);font-size:13px;max-width:52ch;}
+
+.toast{
+  position:fixed;bottom:24px;right:24px;background:var(--navy-950);color:#fff;
+  padding:12px 18px;border-radius:5px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(8px);transition:all .2s ease;pointer-events:none;z-index:80;
+}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.error{background:#7a2a20;}
+
+@media (max-width:720px){
+  .admin-header{flex-wrap:wrap;}
+  .admin-user{order:3;width:100%;justify-content:flex-end;}
+}
