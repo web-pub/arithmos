@@ -1,4 +1,4 @@
-// Arithmos — Espace Admin (V08-001)
+// Arithmos — Espace Admin (V09-001)
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signOut,
@@ -13,6 +13,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { calculerKPI, GROUPES_KPI } from "./kpi.js";
 import { renderSparkline } from "./charts.js";
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
+import { RUBRIQUES, GROUPES_MAPPING, mappingParDefaut, parseRangesInput, formatRangesInput, sommeParRubrique } from "./mapping.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -176,6 +177,7 @@ document.getElementById('btn-new-societe').addEventListener('click', () => {
   document.getElementById('societe-modal-title').textContent = 'Nouvelle société';
   document.getElementById('form-societe').reset();
   document.getElementById('societe-id').value = '';
+  renderMappingFields(mappingParDefaut());
   openModal('modal-societe');
 });
 
@@ -187,7 +189,31 @@ function editSociete(id) {
   document.getElementById('societe-nom').value = s.nom || '';
   document.getElementById('societe-forme').value = s.formeJuridique || '';
   document.getElementById('societe-numero').value = s.numeroEntreprise || '';
+  renderMappingFields(s.mappingComptes || mappingParDefaut());
   openModal('modal-societe');
+}
+
+// ---------- Mapping comptable (import "Balance comptable détaillée") ----------
+function renderMappingFields(mapping) {
+  const el = document.getElementById('mapping-fields');
+  el.innerHTML = GROUPES_MAPPING.map(groupe => {
+    const champs = RUBRIQUES.filter(r => r.groupe === groupe).map(r => `
+      <div class="field">
+        <label for="map-${r.key}">${escapeHtml(r.label)}</label>
+        <input type="text" id="map-${r.key}" value="${escapeHtml(formatRangesInput(mapping[r.key] || r.defaut))}" placeholder="ex. 700000-709999">
+      </div>`).join('');
+    return `<h4 style="margin:14px 0 6px;font-size:13px;color:var(--ink-soft);">${escapeHtml(groupe)}</h4>${champs}`;
+  }).join('');
+}
+
+function readMappingFields() {
+  const mapping = {};
+  RUBRIQUES.forEach(r => {
+    const input = document.getElementById(`map-${r.key}`);
+    const ranges = input ? parseRangesInput(input.value) : [];
+    mapping[r.key] = ranges.length ? ranges : r.defaut;
+  });
+  return mapping;
 }
 
 async function deleteSociete(id) {
@@ -206,6 +232,7 @@ document.getElementById('form-societe').addEventListener('submit', async (e) => 
     nom: document.getElementById('societe-nom').value.trim(),
     formeJuridique: document.getElementById('societe-forme').value.trim(),
     numeroEntreprise: document.getElementById('societe-numero').value.trim(),
+    mappingComptes: readMappingFields(),
   };
   try {
     if (id) {
@@ -293,18 +320,52 @@ function parseArithmosWorkbook(arrayBuffer) {
 
   rows.forEach((row, idx) => {
     const a = String(row[0] ?? '').trim();
-    const b = String(row[1] ?? '').trim();
+    const b = row[1];
     const c = row[2];
 
-    if (b === 'Société' && !societeFichier) societeFichier = String(c ?? '').trim();
-    if (b === 'Exercice (année)' && !anneeFichier) anneeFichier = String(c ?? '').trim();
+    // Lignes "Société" / "Exercice (année)" : libellé en colonne A, valeur saisie en colonne B.
+    if (a === 'Société' && !societeFichier) societeFichier = String(b ?? '').trim();
+    if (a === 'Exercice (année)' && !anneeFichier) anneeFichier = String(b ?? '').trim();
 
+    // Lignes de données : code en colonne A, montant en colonne C.
     if (CODE_MAP[a] && typeof c === 'number') {
       valeurs[CODE_MAP[a]] = c;
     }
   });
 
   return { valeurs, societeFichier, anneeFichier, totaux: computeTotaux(valeurs) };
+}
+
+// Import "Balance comptable détaillée" : 2 colonnes (Compte, Solde signé), une ligne par compte.
+// Les comptes sont agrégés dans chaque rubrique interne selon le mapping de plages de la société
+// (societes/{id}.mappingComptes), avec le même résultat final (valeurs/totaux) que l'import BNB.
+function parseBalanceDetaillee(arrayBuffer, mappingComptes) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+
+  const comptesSoldes = [];
+  let societeFichier = '', anneeFichier = '';
+
+  rows.forEach(row => {
+    const a = row[0];
+    const aStr = String(a ?? '').trim();
+    const b = row[1];
+    const c = row[2];
+
+    // Lignes "Société" / "Exercice (année)" : libellé en colonne A, valeur saisie en colonne B.
+    if (aStr === 'Société' && !societeFichier) societeFichier = String(b ?? '').trim();
+    if (aStr === 'Exercice (année)' && !anneeFichier) anneeFichier = String(b ?? '').trim();
+
+    // Lignes de données : numéro de compte en colonne A, solde en colonne C.
+    const compte = typeof a === 'number' ? a : (/^\d+$/.test(aStr) ? parseInt(aStr, 10) : null);
+    if (compte !== null && typeof c === 'number') {
+      comptesSoldes.push({ compte, solde: c });
+    }
+  });
+
+  const valeurs = sommeParRubrique(comptesSoldes, mappingComptes);
+  return { valeurs, societeFichier, anneeFichier, totaux: computeTotaux(valeurs), nbComptes: comptesSoldes.length };
 }
 
 async function loadExercices() {
@@ -334,6 +395,7 @@ function renderExercices(societeId) {
     const equilibre = Math.abs(ecart) < 1;
     return `<tr>
       <td><strong>${escapeHtml(String(ex.annee))}</strong></td>
+      <td>${ex.typeImport === 'detaillee' ? 'Balance détaillée' : 'Bilan BNB'}</td>
       <td>${formatEUR(t.totalActif)}</td>
       <td>${formatEUR(t.resultatExercice)}</td>
       <td>${equilibre ? '✓ équilibré' : `⚠ écart ${formatEUR(ecart)}`}</td>
@@ -343,7 +405,7 @@ function renderExercices(societeId) {
     </tr>`;
   }).join('');
   el.innerHTML = `<table class="data-table">
-    <thead><tr><th>Exercice</th><th>Total actif</th><th>Résultat de l'exercice</th><th>Équilibre</th><th></th></tr></thead>
+    <thead><tr><th>Exercice</th><th>Source</th><th>Total actif</th><th>Résultat de l'exercice</th><th>Équilibre</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 
   el.querySelectorAll('[data-delete-exercice]').forEach(b => b.addEventListener('click', () =>
@@ -363,8 +425,18 @@ document.getElementById('btn-new-exercice').addEventListener('click', () => {
   document.getElementById('form-exercice').reset();
   document.getElementById('exercice-msg').textContent = '';
   if (societeId) document.getElementById('exercice-societe').value = societeId;
+  document.querySelector('input[name="exercice-type"][value="bnb"]').checked = true;
+  updateExerciceTypeUi();
   openModal('modal-exercice');
 });
+
+function updateExerciceTypeUi() {
+  const type = document.querySelector('input[name="exercice-type"]:checked').value;
+  document.getElementById('exercice-fichier').accept = '.xlsx';
+  document.getElementById('lien-modele-bnb').style.display = (type === 'bnb') ? 'inline-block' : 'none';
+  document.getElementById('lien-modele-detaille').style.display = (type === 'detaillee') ? 'inline-block' : 'none';
+}
+document.querySelectorAll('input[name="exercice-type"]').forEach(r => r.addEventListener('change', updateExerciceTypeUi));
 
 document.getElementById('form-exercice').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -376,14 +448,20 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
   const annee = parseInt(document.getElementById('exercice-annee').value, 10);
   const fileInput = document.getElementById('exercice-fichier');
   const file = fileInput.files[0];
+  const typeImport = document.querySelector('input[name="exercice-type"]:checked').value;
   if (!societeId || !annee || !file) return;
 
   try {
     const buffer = await file.arrayBuffer();
-    const parsed = parseArithmosWorkbook(buffer);
+    const societeMapping = societesCache.find(s => s.id === societeId)?.mappingComptes || mappingParDefaut();
+    const parsed = typeImport === 'detaillee'
+      ? parseBalanceDetaillee(buffer, societeMapping)
+      : parseArithmosWorkbook(buffer);
 
-    if (Object.keys(parsed.valeurs).length === 0) {
-      msg.textContent = "Aucune donnée reconnue dans ce fichier — utilise le modèle Arithmos sans modifier les codes/libellés.";
+    if (Object.keys(parsed.valeurs).length === 0 || (typeImport === 'detaillee' && parsed.nbComptes === 0)) {
+      msg.textContent = typeImport === 'detaillee'
+        ? "Aucun compte reconnu dans ce fichier — vérifie que la colonne Compte contient bien des numéros et la colonne Solde des montants."
+        : "Aucune donnée reconnue dans ce fichier — utilise le modèle Arithmos sans modifier les codes/libellés.";
       msg.classList.add('error');
       return;
     }
@@ -401,6 +479,7 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
       annee,
       valeurs: parsed.valeurs,
       totaux: parsed.totaux,
+      typeImport,
       dateImport: serverTimestamp(),
       importePar: currentUid,
     });

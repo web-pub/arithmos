@@ -1,4 +1,4 @@
-// Arithmos — Espace "Résultats" (comptes à accès limité, rôle "lecteur") — V08-001
+// Arithmos — Espace "Résultats" (comptes à accès limité, rôle "lecteur") — V09-001
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {

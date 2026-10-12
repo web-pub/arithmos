@@ -107,6 +107,9 @@ table.data-table tr:last-child td{border-bottom:none;}
 .modal .field input,.modal .field select{
   width:100%;padding:9px 11px;border:1px solid var(--paper-line);border-radius:4px;font-size:14px;font-family:var(--font-body);
 }
+.modal .field input[type="radio"],.modal .field input[type="checkbox"]{
+  width:auto;padding:0;margin:0 6px 0 0;border:none;vertical-align:middle;
+}
 .modal .field small{display:block;color:var(--ink-soft);font-size:12px;margin-top:4px;}
 
 /* ---------- Formulaire Contenu (hors modal) ---------- */
