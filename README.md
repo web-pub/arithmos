@@ -1,15 +1,15 @@
-# Arithmos — V13-001
+# Arithmos — V14-001
 
 ## Nouveau dans cette version
-- **Graphiques beaucoup plus visuels** dans l'onglet KPI (Admin) et dans Mes résultats, via Chart.js (chargée depuis un CDN, même méthode que XLSX.js/jsPDF pour les exports — pas d'installation).
-  - Le **score de santé financière** s'affiche maintenant comme une **jauge** colorée (demi-cercle) avec la note au centre, plutôt qu'un simple texte.
-  - Un nouveau graphique **"Profil global"** : un radar à 4 axes (Liquidité, Solvabilité, Rentabilité, Trésorerie), avec l'exercice précédent superposé en pointillés quand il existe — pour voir d'un coup d'œil où une société est forte ou fragile, et comment ça évolue.
-  - Un nouveau graphique **"Comparaison par exercice"** : des barres groupées (chiffre d'affaires, résultat de l'exercice, total actif) sur tous les exercices importés, dès qu'il y en a au moins 2.
-  - Les petites courbes d'évolution par KPI (sparklines) sont remplacées par de **vraies courbes agrandies**, avec grille, dégradé de couleur et info-bulle au survol — dès qu'au moins 2 exercices existent pour ce KPI (sinon, le message "pas assez de données" reste affiché comme avant).
-  - Ces graphiques sont aussi recalculés automatiquement en changeant de société ou d'exercice dans les menus déroulants.
+- **Page "Fonctionnalités" séparée** : la section "Comment ça marche" (les 5 étapes, import → accès) quitte la page d'accueil et vit maintenant sur sa propre page publique (`fonctionnalites.html`), accessible depuis le menu et le bouton "Voir le fonctionnement" du hero. La page d'accueil redevient plus courte (hero + bandeau Accès).
+  - Le contenu reste modifiable depuis l'onglet **Contenu** de l'Admin, au même endroit qu'avant (juste renommé "Page Fonctionnalités — Comment ça marche").
+- **Comparatif sur 2 exercices (2024/2025)** : confirmé fonctionnel une fois le correctif Chart.js de la V13-002 appliqué — le radar "Profil global" superpose l'exercice précédent en pointillés, et "Comparaison par exercice" affiche les deux années côte à côte, dès que 2 exercices ou plus sont importés pour une société.
+
+## Correctif V13-002 (inclus)
+Les graphiques de la V13-001 restaient vides : l'URL Chart.js pointait vers la version 4.4.4, inexistante sur le CDN cdnjs (seules 4.4.0/4.4.1 existent pour cette série). Corrigé en 4.4.1.
 
 ## Pas de nouvelle règle Firestore à republier
-Aucun changement de structure de données — uniquement de l'affichage.
+Aucun changement de structure de données.
 
 ## Pas encore construit
 Aucun chantier en attente pour le moment.

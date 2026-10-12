@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arithmos — Fonctionnalités</title>
+<meta name="description" content="Comment Arithmos transforme les comptes annuels d'une société en KPI belges clairs : import, calcul, lecture et accès.">
+<link rel="icon" href="assets/logo-arithmos.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .features-shell{max-width:980px;margin:0 auto;padding:12px 32px 0;}
+  .features-shell .back{display:inline-block;margin:28px 0 8px;font-size:14px;color:var(--ink-soft);text-decoration:none;}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand"><span class="brand-mark">A</span>rithmos</div>
+    <nav class="site-nav">
+      <a href="fonctionnalites.html">Fonctionnalités</a>
+      <a href="index.html#acces">Accès</a>
+      <a href="login.html" class="btn-admin">Espace Admin</a>
+    </nav>
+  </div>
+</header>
+
+<div class="features-shell">
+  <a class="back" href="index.html">← Retour à l'accueil</a>
+</div>
+
+<section class="features" id="fonctionnalites">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker" data-content-key="featuresKicker">Comment ça marche</p>
+      <h2 data-content-key="featuresTitre">D'un fichier Excel à une lecture claire de la santé financière</h2>
+    </div>
+    <div class="ledger">
+      <div class="ledger-row">
+        <div class="num">01</div>
+        <div><h3 data-content-key="feature1Titre">Import des comptes annuels</h3><p data-content-key="feature1Texte">Déposez le fichier Excel d'une société : bilan et compte de résultats sont lus automatiquement, sans ressaisie.</p></div>
+      </div>
+      <div class="ledger-row">
+        <div class="num">02</div>
+        <div><h3 data-content-key="feature2Titre">Calcul des KPI selon le droit belge</h3><p data-content-key="feature2Texte">Ratios de liquidité, solvabilité, rentabilité et trésorerie recalculés instantanément selon les règles comptables belges.</p></div>
+      </div>
+      <div class="ledger-row">
+        <div class="num">03</div>
+        <div><h3 data-content-key="feature3Titre">Lecture en chiffre, analyse et graphique</h3><p data-content-key="feature3Texte">Chaque indicateur est présenté avec sa valeur, une explication en langage clair, et une visualisation pour repérer l'évolution d'un coup d'œil.</p></div>
+      </div>
+      <div class="ledger-row">
+        <div class="num">04</div>
+        <div><h3 data-content-key="feature4Titre">Plusieurs sociétés, un seul espace</h3><p data-content-key="feature4Texte">Créez autant de fiches sociétés que nécessaire et gardez chaque dossier comptable séparé et organisé.</p></div>
+      </div>
+      <div class="ledger-row">
+        <div class="num">05</div>
+        <div><h3 data-content-key="feature5Titre">Accès maîtrisé</h3><p data-content-key="feature5Texte">Vous seule créez les sociétés ; vous décidez qui peut consulter les résultats de chacune, et avec quel niveau d'accès.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="access" id="acces">
+  <div class="wrap">
+    <div>
+      <h2>Prêt·e à voir vos comptes autrement ?</h2>
+      <p>Connectez-vous à l'espace Admin pour importer vos premiers comptes annuels.</p>
+    </div>
+    <a href="login.html" class="btn btn-primary">Se connecter</a>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="legal-links">
+      <a href="legal.html#securisation">Sécurisation</a><span class="sep">|</span>
+      <a href="legal.html#confidentialite">Déclaration de confidentialité</a><span class="sep">|</span>
+      <a href="legal.html#ethique">Business Ethics &amp; Governance</a><span class="sep">|</span>
+      <a href="legal.html#cookies">Politique en matière de cookies</a><span class="sep">|</span>
+      <a href="legal.html#responsabilite">Limitation de responsabilité</a><span class="sep">|</span>
+      <a href="legal.html#mentions">Mentions légales / RGPD / CGV</a>
+    </div>
+    <div class="copy-block">
+      <p>© 2026 Hélène Laruelle — Tous droits réservés. Toute copie du site ou de son code est interdite.</p>
+      <p>Site développé par Hélène Laruelle.</p>
+      <p>Contenu sous la responsabilité de Hélène Laruelle</p>
+    </div>
+  </div>
+  <div class="hl-mark"><img src="assets/logo-hl.jpg" alt="HL"></div>
+</footer>
+
+<script type="module">
+  import { applyContenuPublic } from "./assets/content.js";
+  applyContenuPublic();
+</script>
+</body>
+</html>
