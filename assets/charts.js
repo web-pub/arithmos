@@ -72,3 +72,148 @@ function formatShort(n, format) {
 function escapeXml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// ---------------------------------------------------------------------------
+// Graphiques "riches" (V13-001) — via Chart.js (chargé en <script> global, voir admin.html /
+// resultats.html, même méthode que XLSX.js/jsPDF pour les exports). Chaque fonction htmlXxx()
+// renvoie un <canvas> à insérer dans le HTML ; montrerXxx() instancie/rafraîchit le graphique une
+// fois ce <canvas> réellement présent dans le DOM (après affectation de innerHTML).
+
+const instances = new Map(); // id de canvas -> instance Chart.js active, pour pouvoir la détruire
+
+function montage(id, config) {
+  const ancien = instances.get(id);
+  if (ancien) { ancien.destroy(); instances.delete(id); }
+  const canvas = document.getElementById(id);
+  if (!canvas || !window.Chart) return null;
+  const chart = new window.Chart(canvas, config);
+  instances.set(id, chart);
+  return chart;
+}
+
+function formatAxe(n, format) {
+  if (format === 'pct') return Math.round(n * 100) + ' %';
+  if (format === 'ratio') return n.toLocaleString('fr-BE', { maximumFractionDigits: 1 });
+  if (Math.abs(n) >= 1000) return Math.round(n / 1000) + 'k €';
+  return Math.round(n) + ' €';
+}
+
+// Courbe d'évolution agrandie d'un seul KPI (remplace la sparkline pour les KPI ayant au moins
+// 2 points). Renvoie false si pas assez de données — l'appelant affiche alors un message à la place.
+export function htmlCourbeKpi(id) {
+  return `<canvas id="${id}" height="110"></canvas>`;
+}
+export function montrerCourbeKpi(id, points, opts = {}) {
+  const valides = (points || []).filter(p => typeof p.value === 'number');
+  if (valides.length < 2) return false;
+  const couleur = valides.every(p => p.value <= 0) ? LINE_COLOR_NEG : LINE_COLOR;
+  montage(id, {
+    type: 'line',
+    data: {
+      labels: valides.map(p => p.label),
+      datasets: [{
+        data: valides.map(p => p.value),
+        borderColor: couleur, backgroundColor: couleur + '26', fill: true, tension: 0.3,
+        pointBackgroundColor: couleur, pointRadius: 4, pointHoverRadius: 6, borderWidth: 2,
+      }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => formatAxe(ctx.parsed.y, opts.format) } },
+      },
+      scales: {
+        y: { ticks: { callback: (v) => formatAxe(v, opts.format) }, grid: { color: GRID_COLOR } },
+        x: { grid: { display: false } },
+      },
+    },
+  });
+  return true;
+}
+
+// Jauge (demi-anneau) du score de santé global /100, avec la note (A-D/E) au centre.
+const COULEURS_NOTE = { A: '#1e7d43', B: '#c9a227', C: '#e07b1a', D: '#c0392b', E: '#9ca3af' };
+export function htmlJaugeScore(id) {
+  return `
+    <div class="jauge-wrap">
+      <canvas id="${id}" height="130"></canvas>
+      <div class="jauge-centre" id="${id}-centre"></div>
+    </div>`;
+}
+export function montrerJaugeScore(id, scoreGlobal) {
+  const couleur = COULEURS_NOTE[scoreGlobal.note] || COULEURS_NOTE.E;
+  const valeur = typeof scoreGlobal.score === 'number' ? scoreGlobal.score : 0;
+  montage(id, {
+    type: 'doughnut',
+    data: { datasets: [{ data: [valeur, 100 - valeur], backgroundColor: [couleur, '#EEF1F8'], borderWidth: 0 }] },
+    options: {
+      maintainAspectRatio: false,
+      circumference: 180, rotation: 270, cutout: '74%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { animateRotate: true },
+    },
+  });
+  const centre = document.getElementById(`${id}-centre`);
+  if (centre) {
+    centre.innerHTML = (typeof scoreGlobal.score === 'number')
+      ? `<span class="jauge-note" style="color:${couleur};">${escapeXml(scoreGlobal.note)}</span><span class="jauge-valeur">${scoreGlobal.score}/100</span>`
+      : `<span class="jauge-note" style="color:${couleur};">—</span>`;
+  }
+}
+
+// Radar (profil) des 4 groupes de KPI (Liquidité, Solvabilité, Rentabilité, Trésorerie), chacun
+// ramené à un score /100 — même échelle que le score global. groupesAnterieurs (facultatif) affiche
+// l'exercice précédent en superposition, pour visualiser l'évolution du profil d'un coup d'œil.
+export function htmlRadarGroupes(id) {
+  return `<canvas id="${id}" height="260"></canvas>`;
+}
+export function montrerRadarGroupes(id, groupes, groupesAnterieurs, labelAnterieur) {
+  const labels = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie'];
+  const datasets = [{
+    label: 'Exercice analysé',
+    data: labels.map(g => groupes[g] ?? 0),
+    borderColor: '#316A6C', backgroundColor: 'rgba(49,106,108,0.25)',
+    pointBackgroundColor: '#316A6C', borderWidth: 2,
+  }];
+  if (groupesAnterieurs) {
+    datasets.push({
+      label: labelAnterieur || 'Exercice précédent',
+      data: labels.map(g => groupesAnterieurs[g] ?? 0),
+      borderColor: '#9CA3AF', backgroundColor: 'rgba(156,163,175,0.12)',
+      pointBackgroundColor: '#9CA3AF', borderWidth: 2, borderDash: [4, 3],
+    });
+  }
+  montage(id, {
+    type: 'radar',
+    data: { labels, datasets },
+    options: {
+      maintainAspectRatio: false,
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, backdropColor: 'transparent' }, grid: { color: GRID_COLOR } } },
+      plugins: { legend: { display: datasets.length > 1, position: 'bottom' } },
+    },
+  });
+}
+
+// Barres groupées comparant plusieurs exercices sur quelques montants clés (CA, résultat, total actif).
+// series: [{ label, data: number[], color }], une entrée par métrique affichée.
+export function htmlBarresExercices(id) {
+  return `<canvas id="${id}" height="170"></canvas>`;
+}
+export function montrerBarresExercices(id, labelsExercices, series) {
+  montage(id, {
+    type: 'bar',
+    data: {
+      labels: labelsExercices,
+      datasets: series.map(s => ({ label: s.label, data: s.data, backgroundColor: s.color, borderRadius: 4 })),
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y: { ticks: { callback: (v) => formatAxe(v) }, grid: { color: GRID_COLOR } },
+        x: { grid: { display: false } },
+      },
+    },
+  });
+}

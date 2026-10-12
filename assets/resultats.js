@@ -6,9 +6,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { calculerKPI, GROUPES_KPI } from "./kpi.js";
-import { renderSparkline } from "./charts.js";
+import {
+  renderSparkline, htmlCourbeKpi, montrerCourbeKpi, htmlJaugeScore, montrerJaugeScore,
+  htmlRadarGroupes, montrerRadarGroupes, htmlBarresExercices, montrerBarresExercices,
+} from "./charts.js";
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
 import { periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
+import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -53,7 +57,7 @@ onAuthStateChanged(auth, async (user) => {
   const societeDocs = await Promise.all(ids.map(id => getDoc(doc(db, 'societes', id))));
   societesAutorisees = societeDocs
     .filter(s => s.exists())
-    .map(s => ({ id: s.id, nom: s.data().nom }))
+    .map(s => ({ id: s.id, nom: s.data().nom, statutLegal: s.data().statutLegal }))
     .sort((a, b) => a.nom.localeCompare(b.nom));
 
   if (societesAutorisees.length === 0) {
@@ -103,10 +107,12 @@ function renderContent() {
   const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois);
 
   const societeId = document.getElementById('resultats-societe-select').value;
+  const societeChoisie = societesAutorisees.find(s => s.id === societeId);
   kpiExportCourant = {
-    nomSociete: societesAutorisees.find(s => s.id === societeId)?.nom || '',
+    nomSociete: societeChoisie?.nom || '',
     periodeLabel: labelPeriode(exercice),
     kpis,
+    sante: null,
   };
 
   const historiquesParCode = {};
@@ -118,14 +124,51 @@ function renderContent() {
     });
   });
 
-  const entete = `<p class="panel-sub" style="margin:-4px 0 14px;">Période analysée : <strong>${escapeHtml(labelPeriode(exercice))}</strong></p>`;
+  const indexExercice = exercicesCache.findIndex(ex => ex.id === exercice.id);
+  const exerciceAnterieur = indexExercice > 0 ? exercicesCache[indexExercice - 1] : null;
+  const kpisAnterieurs = exerciceAnterieur
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois)
+    : null;
+  const scoreGlobal = calculerScoreGlobal(kpis);
+  const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);
+  kpiExportCourant.sante = { scoreGlobal, alertes };
 
-  content.innerHTML = entete + GROUPES_KPI.map(groupe => {
+  const idJauge = 'jauge-score-resultats';
+  const idRadar = 'radar-groupes-resultats';
+  const idBarres = 'barres-exercices-resultats';
+
+  const entete = `<p class="panel-sub" style="margin:-4px 0 14px;">Période analysée : <strong>${escapeHtml(labelPeriode(exercice))}</strong></p>` +
+    renderSanteHtml(scoreGlobal, alertes, htmlJaugeScore(idJauge));
+
+  const groupesActuels = scoresParGroupe(kpis);
+  const groupesAnterieurs = kpisAnterieurs ? scoresParGroupe(kpisAnterieurs) : null;
+  const radarBlock = `
+    <div class="chart-card">
+      <h4>Profil global (4 groupes de KPI)</h4>
+      <div class="chart-card-wrap">${htmlRadarGroupes(idRadar)}</div>
+    </div>`;
+
+  const barresBlock = exercicesCache.length >= 2 ? `
+    <div class="chart-card">
+      <h4>Comparaison par exercice</h4>
+      <div class="chart-card-wrap courte">${htmlBarresExercices(idBarres)}</div>
+    </div>` : '';
+
+  const courbesAMonter = {};
+
+  const html = GROUPES_KPI.map(groupe => {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
         ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
+      const historique = historiquesParCode[k.code] || [];
+      const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
+      const idCourbe = `kc-resultats-${k.code}`;
+      const courbeOuSpark = assezDePoints
+        ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
+        : renderSparkline(historique, { format });
+      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
       return `
         <div class="kpi-card">
           <div class="kpi-card-head">
@@ -133,12 +176,25 @@ function renderContent() {
             <span class="kpi-badge ${k.statut}">${labelStatut(k.statut)}</span>
           </div>
           <div class="kpi-value">${escapeHtml(k.affichage)}${parMois}</div>
-          ${renderSparkline(historiquesParCode[k.code] || [], { format })}
+          ${courbeOuSpark}
           <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
         </div>`;
     }).join('');
     return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
   }).join('');
+
+  content.innerHTML = entete + radarBlock + barresBlock + html;
+
+  montrerJaugeScore(idJauge, scoreGlobal);
+  montrerRadarGroupes(idRadar, groupesActuels, groupesAnterieurs, exerciceAnterieur ? labelCourtPeriode(exerciceAnterieur) : null);
+  if (exercicesCache.length >= 2) {
+    montrerBarresExercices(idBarres, exercicesCache.map(ex => labelCourtPeriode(ex)), [
+      { label: "Chiffre d'affaires (ou marge brute)", data: exercicesCache.map(ex => ex.valeurs?.chiffreAffaires || 0), color: '#316A6C' },
+      { label: "Résultat de l'exercice", data: exercicesCache.map(ex => ex.totaux?.resultatExercice || 0), color: '#0B1B32' },
+      { label: 'Total actif', data: exercicesCache.map(ex => ex.totaux?.totalActif || 0), color: '#C9A227' },
+    ]);
+  }
+  Object.entries(courbesAMonter).forEach(([id, { historique, format }]) => montrerCourbeKpi(id, historique, { format }));
 }
 
 function labelStatut(statut) {
@@ -147,11 +203,11 @@ function labelStatut(statut) {
 
 document.getElementById('resultats-export-pdf').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) return;
-  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
 });
 document.getElementById('resultats-export-excel').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) return;
-  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
+  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
 });
 
 function escapeHtml(str) {

@@ -11,11 +11,15 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { calculerKPI, GROUPES_KPI } from "./kpi.js";
-import { renderSparkline } from "./charts.js";
+import {
+  renderSparkline, htmlCourbeKpi, montrerCourbeKpi, htmlJaugeScore, montrerJaugeScore,
+  htmlRadarGroupes, montrerRadarGroupes, htmlBarresExercices, montrerBarresExercices,
+} from "./charts.js";
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
 import { RUBRIQUES, GROUPES_MAPPING, mappingParDefaut, parseRangesInput, formatRangesInput, sommeParRubrique } from "./mapping.js";
 import { nombreMoisEntre, periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
 import { parseBnbOfficiel } from "./bnb-officiel.js";
+import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -151,6 +155,24 @@ function populateSocietesSelects() {
   if (societesCache.some(s => s.id === prevKpiValue)) kpiSelect.value = prevKpiValue;
 }
 
+const STATUTS_LEGAUX = {
+  normal: { label: 'Normal', classe: 'ok' },
+  surveillance: { label: 'Sous surveillance', classe: 'warn' },
+  reorganisation: { label: 'Réorganisation judiciaire', classe: 'danger' },
+  faillite: { label: 'Faillite déclarée', classe: 'danger' },
+  liquidation: { label: 'Dissolution / liquidation', classe: 'danger' },
+};
+function labelStatutLegal(statut) {
+  return (STATUTS_LEGAUX[statut] || STATUTS_LEGAUX.normal).label;
+}
+function renderBadgeStatutLegal(statut) {
+  const info = STATUTS_LEGAUX[statut] || STATUTS_LEGAUX.normal;
+  if (info.classe === 'ok') return '<span style="color:var(--ink-soft);">Normal</span>';
+  const couleur = info.classe === 'danger' ? '#b42318' : '#9a6700';
+  const fond = info.classe === 'danger' ? '#fef3f2' : '#fff8e6';
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;color:${couleur};background:${fond};">${escapeHtml(info.label)}</span>`;
+}
+
 function renderSocietes() {
   const el = document.getElementById('societes-list');
   if (societesCache.length === 0) {
@@ -162,13 +184,14 @@ function renderSocietes() {
       <td><strong>${escapeHtml(s.nom)}</strong></td>
       <td>${escapeHtml(s.formeJuridique || '—')}</td>
       <td>${escapeHtml(s.numeroEntreprise || '—')}</td>
+      <td>${renderBadgeStatutLegal(s.statutLegal)}</td>
       <td class="row-actions">
         <button class="btn-outline" data-edit-societe="${s.id}">Modifier</button>
         <button class="btn-outline btn-danger" data-delete-societe="${s.id}">Supprimer</button>
       </td>
     </tr>`).join('');
   el.innerHTML = `<table class="data-table">
-    <thead><tr><th>Société</th><th>Forme juridique</th><th>N° entreprise</th><th></th></tr></thead>
+    <thead><tr><th>Société</th><th>Forme juridique</th><th>N° entreprise</th><th>Statut légal</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 
   el.querySelectorAll('[data-edit-societe]').forEach(b => b.addEventListener('click', () => editSociete(b.dataset.editSociete)));
@@ -179,6 +202,7 @@ document.getElementById('btn-new-societe').addEventListener('click', () => {
   document.getElementById('societe-modal-title').textContent = 'Nouvelle société';
   document.getElementById('form-societe').reset();
   document.getElementById('societe-id').value = '';
+  document.getElementById('societe-statut-legal').value = 'normal';
   renderMappingFields(mappingParDefaut());
   openModal('modal-societe');
 });
@@ -191,6 +215,7 @@ function editSociete(id) {
   document.getElementById('societe-nom').value = s.nom || '';
   document.getElementById('societe-forme').value = s.formeJuridique || '';
   document.getElementById('societe-numero').value = s.numeroEntreprise || '';
+  document.getElementById('societe-statut-legal').value = s.statutLegal || 'normal';
   renderMappingFields(s.mappingComptes || mappingParDefaut());
   openModal('modal-societe');
 }
@@ -234,6 +259,7 @@ document.getElementById('form-societe').addEventListener('submit', async (e) => 
     nom: document.getElementById('societe-nom').value.trim(),
     formeJuridique: document.getElementById('societe-forme').value.trim(),
     numeroEntreprise: document.getElementById('societe-numero').value.trim(),
+    statutLegal: document.getElementById('societe-statut-legal').value,
     mappingComptes: readMappingFields(),
   };
   try {
@@ -879,10 +905,12 @@ function renderKpiContent() {
   const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois);
 
   const societeId = document.getElementById('kpi-societe-select').value;
+  const societeChoisie = societesCache.find(s => s.id === societeId);
   kpiExportCourant = {
-    nomSociete: societesCache.find(s => s.id === societeId)?.nom || '',
+    nomSociete: societeChoisie?.nom || '',
     periodeLabel: labelPeriode(exercice),
     kpis,
+    sante: null, // renseigné plus bas, une fois le score et les alertes calculés
   };
 
   // Historique par KPI (tous les exercices importés, pour la sparkline), aligné sur l'ordre chronologique.
@@ -895,7 +923,42 @@ function renderKpiContent() {
     });
   });
 
-  const entete = `<p class="panel-sub" style="margin:-4px 0 14px;">Période analysée : <strong>${escapeHtml(labelPeriode(exercice))}</strong></p>`;
+  // Score de santé & signaux d'alerte : comparés à l'exercice immédiatement précédent (même liste
+  // triée par date de fin que kpiExercicesCache) quand il existe.
+  const indexExercice = kpiExercicesCache.findIndex(ex => ex.id === exercice.id);
+  const exerciceAnterieur = indexExercice > 0 ? kpiExercicesCache[indexExercice - 1] : null;
+  const kpisAnterieurs = exerciceAnterieur
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois)
+    : null;
+  const scoreGlobal = calculerScoreGlobal(kpis);
+  const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);
+  kpiExportCourant.sante = { scoreGlobal, alertes };
+
+  const idJauge = 'jauge-score-admin';
+  const idRadar = 'radar-groupes-admin';
+  const idBarres = 'barres-exercices-admin';
+
+  const entete = `<p class="panel-sub" style="margin:-4px 0 14px;">Période analysée : <strong>${escapeHtml(labelPeriode(exercice))}</strong></p>` +
+    renderSanteHtml(scoreGlobal, alertes, htmlJaugeScore(idJauge));
+
+  const groupesActuels = scoresParGroupe(kpis);
+  const groupesAnterieurs = kpisAnterieurs ? scoresParGroupe(kpisAnterieurs) : null;
+  const radarBlock = `
+    <div class="chart-card">
+      <h4>Profil global (4 groupes de KPI)</h4>
+      <div class="chart-card-wrap">${htmlRadarGroupes(idRadar)}</div>
+    </div>`;
+
+  // Comparaison par exercice (CA, résultat, total actif) : seulement si au moins 2 exercices.
+  const barresBlock = kpiExercicesCache.length >= 2 ? `
+    <div class="chart-card">
+      <h4>Comparaison par exercice</h4>
+      <div class="chart-card-wrap courte">${htmlBarresExercices(idBarres)}</div>
+    </div>` : '';
+
+  // idCourbe -> { historique, format }, rempli pendant la construction du HTML et consommé juste
+  // après pour instancier les graphiques (les <canvas> n'existent qu'une fois innerHTML affecté).
+  const courbesAMonter = {};
 
   const html = GROUPES_KPI.map(groupe => {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
@@ -903,6 +966,13 @@ function renderKpiContent() {
       const format = k.code.includes('liquidite') ? 'ratio' :
         ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
+      const historique = historiquesParCode[k.code] || [];
+      const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
+      const idCourbe = `kc-admin-${k.code}`;
+      const courbeOuSpark = assezDePoints
+        ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
+        : renderSparkline(historique, { format });
+      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
       return `
         <div class="kpi-card">
           <div class="kpi-card-head">
@@ -910,14 +980,27 @@ function renderKpiContent() {
             <span class="kpi-badge ${k.statut}">${labelStatut(k.statut)}</span>
           </div>
           <div class="kpi-value">${escapeHtml(k.affichage)}${parMois}</div>
-          ${renderSparkline(historiquesParCode[k.code] || [], { format })}
+          ${courbeOuSpark}
           <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
         </div>`;
     }).join('');
     return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
   }).join('');
 
-  content.innerHTML = entete + html;
+  content.innerHTML = entete + radarBlock + barresBlock + html;
+
+  // Les <canvas> n'existent qu'une fois innerHTML affecté : on instancie/rafraîchit les graphiques
+  // Chart.js juste après (ils remplacent toute instance précédente sur le même id).
+  montrerJaugeScore(idJauge, scoreGlobal);
+  montrerRadarGroupes(idRadar, groupesActuels, groupesAnterieurs, exerciceAnterieur ? labelCourtPeriode(exerciceAnterieur) : null);
+  if (kpiExercicesCache.length >= 2) {
+    montrerBarresExercices(idBarres, kpiExercicesCache.map(ex => labelCourtPeriode(ex)), [
+      { label: "Chiffre d'affaires (ou marge brute)", data: kpiExercicesCache.map(ex => ex.valeurs?.chiffreAffaires || 0), color: '#316A6C' },
+      { label: "Résultat de l'exercice", data: kpiExercicesCache.map(ex => ex.totaux?.resultatExercice || 0), color: '#0B1B32' },
+      { label: 'Total actif', data: kpiExercicesCache.map(ex => ex.totaux?.totalActif || 0), color: '#C9A227' },
+    ]);
+  }
+  Object.entries(courbesAMonter).forEach(([id, { historique, format }]) => montrerCourbeKpi(id, historique, { format }));
 }
 
 function labelStatut(statut) {
@@ -926,11 +1009,11 @@ function labelStatut(statut) {
 
 document.getElementById('kpi-export-pdf').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
-  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
 });
 document.getElementById('kpi-export-excel').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
-  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
+  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
 });
 
 // ---------- Contenu éditable des pages publiques ----------
