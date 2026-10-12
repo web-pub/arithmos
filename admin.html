@@ -201,6 +201,17 @@
         <label for="societe-numero">Numéro d'entreprise (BCE)</label>
         <input type="text" id="societe-numero" placeholder="0123.456.789">
       </div>
+      <div class="field">
+        <label for="societe-statut-legal">Statut légal</label>
+        <select id="societe-statut-legal">
+          <option value="normal">Normal</option>
+          <option value="surveillance">Sous surveillance</option>
+          <option value="reorganisation">Réorganisation judiciaire</option>
+          <option value="faillite">Faillite déclarée</option>
+          <option value="liquidation">Dissolution / liquidation</option>
+        </select>
+        <small>Saisi manuellement — Arithmos n'a pas accès aux bases judiciaires externes (Moniteur belge, greffe des tribunaux…).</small>
+      </div>
 
       <details>
         <summary style="cursor:pointer;font-size:13px;font-weight:600;margin:6px 0 10px;">Mapping comptable (pour l'import "Balance comptable détaillée")</summary>
@@ -318,6 +329,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script type="module" src="assets/admin.js"></script>
 </body>
 </html>
