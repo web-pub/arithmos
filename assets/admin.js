@@ -1,4 +1,4 @@
-// Arithmos — Espace Admin (V09-001)
+// Arithmos — Espace Admin (V10-001)
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signOut,
@@ -14,6 +14,8 @@ import { calculerKPI, GROUPES_KPI } from "./kpi.js";
 import { renderSparkline } from "./charts.js";
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
 import { RUBRIQUES, GROUPES_MAPPING, mappingParDefaut, parseRangesInput, formatRangesInput, sommeParRubrique } from "./mapping.js";
+import { nombreMoisEntre, periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
+import { parseBnbOfficiel } from "./bnb-officiel.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -310,22 +312,40 @@ function computeTotaux(v) {
   return { totalActif, totalPassif, resultatExploitation, resultatCourant, resultatAvantImpot, resultatExercice };
 }
 
+// Convertit une cellule "Date de début"/"Date de fin" (objet Date Excel, ou texte JJ/MM/AAAA
+// en secours) en chaîne ISO AAAA-MM-JJ, ou null si vide/illisible.
+// Important : on lit les composantes LOCALES de l'objet Date (pas UTC/toISOString), car SheetJS
+// (cellDates:true) construit ces dates à minuit heure locale pour représenter le jour affiché
+// dans Excel — passer par toISOString() décale d'un jour dans les fuseaux horaires UTC+.
+function dateCelluleVersISO(val) {
+  if (val instanceof Date && !isNaN(val)) {
+    const y = val.getFullYear(), m = String(val.getMonth() + 1).padStart(2, '0'), d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof val === 'string') {
+    const m = val.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
 function parseArithmosWorkbook(arrayBuffer) {
-  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
 
   const valeurs = {};
-  let societeFichier = '', anneeFichier = '';
+  let societeFichier = '', dateDebutFichier = null, dateFinFichier = null;
 
   rows.forEach((row, idx) => {
     const a = String(row[0] ?? '').trim();
     const b = row[1];
     const c = row[2];
 
-    // Lignes "Société" / "Exercice (année)" : libellé en colonne A, valeur saisie en colonne B.
+    // Lignes "Société" / "Date de début" / "Date de fin" : libellé en colonne A, valeur en colonne B.
     if (a === 'Société' && !societeFichier) societeFichier = String(b ?? '').trim();
-    if (a === 'Exercice (année)' && !anneeFichier) anneeFichier = String(b ?? '').trim();
+    if (a === 'Date de début' && !dateDebutFichier) dateDebutFichier = dateCelluleVersISO(b);
+    if (a === 'Date de fin' && !dateFinFichier) dateFinFichier = dateCelluleVersISO(b);
 
     // Lignes de données : code en colonne A, montant en colonne C.
     if (CODE_MAP[a] && typeof c === 'number') {
@@ -333,19 +353,19 @@ function parseArithmosWorkbook(arrayBuffer) {
     }
   });
 
-  return { valeurs, societeFichier, anneeFichier, totaux: computeTotaux(valeurs) };
+  return { valeurs, societeFichier, dateDebutFichier, dateFinFichier, totaux: computeTotaux(valeurs) };
 }
 
 // Import "Balance comptable détaillée" : 2 colonnes (Compte, Solde signé), une ligne par compte.
 // Les comptes sont agrégés dans chaque rubrique interne selon le mapping de plages de la société
 // (societes/{id}.mappingComptes), avec le même résultat final (valeurs/totaux) que l'import BNB.
 function parseBalanceDetaillee(arrayBuffer, mappingComptes) {
-  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
 
   const comptesSoldes = [];
-  let societeFichier = '', anneeFichier = '';
+  let societeFichier = '', dateDebutFichier = null, dateFinFichier = null;
 
   rows.forEach(row => {
     const a = row[0];
@@ -353,9 +373,10 @@ function parseBalanceDetaillee(arrayBuffer, mappingComptes) {
     const b = row[1];
     const c = row[2];
 
-    // Lignes "Société" / "Exercice (année)" : libellé en colonne A, valeur saisie en colonne B.
+    // Lignes "Société" / "Date de début" / "Date de fin" : libellé en colonne A, valeur en colonne B.
     if (aStr === 'Société' && !societeFichier) societeFichier = String(b ?? '').trim();
-    if (aStr === 'Exercice (année)' && !anneeFichier) anneeFichier = String(b ?? '').trim();
+    if (aStr === 'Date de début' && !dateDebutFichier) dateDebutFichier = dateCelluleVersISO(b);
+    if (aStr === 'Date de fin' && !dateFinFichier) dateFinFichier = dateCelluleVersISO(b);
 
     // Lignes de données : numéro de compte en colonne A, solde en colonne C.
     const compte = typeof a === 'number' ? a : (/^\d+$/.test(aStr) ? parseInt(aStr, 10) : null);
@@ -365,7 +386,7 @@ function parseBalanceDetaillee(arrayBuffer, mappingComptes) {
   });
 
   const valeurs = sommeParRubrique(comptesSoldes, mappingComptes);
-  return { valeurs, societeFichier, anneeFichier, totaux: computeTotaux(valeurs), nbComptes: comptesSoldes.length };
+  return { valeurs, societeFichier, dateDebutFichier, dateFinFichier, totaux: computeTotaux(valeurs), nbComptes: comptesSoldes.length };
 }
 
 async function loadExercices() {
@@ -376,8 +397,11 @@ async function loadExercices() {
     exercicesCache = [];
     return;
   }
-  const snap = await getDocs(query(collection(db, 'societes', societeId, 'exercices'), orderBy('annee', 'desc')));
-  exercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Tri côté client par date de fin (pas de orderBy côté serveur : les exercices importés avant
+  // V10-001 n'ont pas de champ dateFin, ce qui les exclurait d'un orderBy Firestore).
+  const snap = await getDocs(collection(db, 'societes', societeId, 'exercices'));
+  exercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => periodeDe(b).dateFin.localeCompare(periodeDe(a).dateFin));
   renderExercices(societeId);
 }
 
@@ -394,8 +418,8 @@ function renderExercices(societeId) {
     const ecart = Math.round((t.totalActif || 0) - (t.totalPassif || 0));
     const equilibre = Math.abs(ecart) < 1;
     return `<tr>
-      <td><strong>${escapeHtml(String(ex.annee))}</strong></td>
-      <td>${ex.typeImport === 'detaillee' ? 'Balance détaillée' : 'Bilan BNB'}</td>
+      <td><strong>${escapeHtml(labelPeriode(ex))}</strong></td>
+      <td>${ex.typeImport === 'detaillee' ? 'Balance détaillée' : ex.typeImport === 'bnb_officiel' ? 'Dépôt officiel BNB' : 'Bilan BNB'}</td>
       <td>${formatEUR(t.totalActif)}</td>
       <td>${formatEUR(t.resultatExercice)}</td>
       <td>${equilibre ? '✓ équilibré' : `⚠ écart ${formatEUR(ecart)}`}</td>
@@ -424,6 +448,7 @@ document.getElementById('btn-new-exercice').addEventListener('click', () => {
   const societeId = document.getElementById('comptes-societe-select').value;
   document.getElementById('form-exercice').reset();
   document.getElementById('exercice-msg').textContent = '';
+  document.getElementById('exercice-duree').textContent = '';
   if (societeId) document.getElementById('exercice-societe').value = societeId;
   document.querySelector('input[name="exercice-type"][value="bnb"]').checked = true;
   updateExerciceTypeUi();
@@ -432,11 +457,43 @@ document.getElementById('btn-new-exercice').addEventListener('click', () => {
 
 function updateExerciceTypeUi() {
   const type = document.querySelector('input[name="exercice-type"]:checked').value;
-  document.getElementById('exercice-fichier').accept = '.xlsx';
+  document.getElementById('exercice-fichier').accept = (type === 'bnb_officiel') ? '.csv' : '.xlsx';
+  document.getElementById('label-exercice-fichier').textContent = (type === 'bnb_officiel')
+    ? 'Fichier CSV (dépôt BNB) *' : 'Fichier Excel (modèle Arithmos) *';
   document.getElementById('lien-modele-bnb').style.display = (type === 'bnb') ? 'inline-block' : 'none';
   document.getElementById('lien-modele-detaille').style.display = (type === 'detaillee') ? 'inline-block' : 'none';
+  document.getElementById('aide-modele-bnb-officiel').style.display = (type === 'bnb_officiel') ? 'inline' : 'none';
 }
 document.querySelectorAll('input[name="exercice-type"]').forEach(r => r.addEventListener('change', updateExerciceTypeUi));
+
+// Import "Dépôt officiel BNB" : les dates de la période sont déjà dans le fichier — on les
+// propose automatiquement dès que le fichier est choisi, pour éviter une double saisie (l'utilisateur
+// peut toujours les corriger avant de valider).
+document.getElementById('exercice-fichier').addEventListener('change', async () => {
+  const type = document.querySelector('input[name="exercice-type"]:checked').value;
+  const file = document.getElementById('exercice-fichier').files[0];
+  if (type !== 'bnb_officiel' || !file) return;
+  try {
+    const text = await file.text();
+    const parsed = parseBnbOfficiel(text);
+    if (parsed.dateDebutFichier) document.getElementById('exercice-date-debut').value = parsed.dateDebutFichier;
+    if (parsed.dateFinFichier) document.getElementById('exercice-date-fin').value = parsed.dateFinFichier;
+    updateExerciceDureeUi();
+  } catch (err) {
+    // Lecture en secours silencieuse : l'utilisateur peut toujours saisir les dates à la main.
+  }
+});
+
+function updateExerciceDureeUi() {
+  const debut = document.getElementById('exercice-date-debut').value;
+  const fin = document.getElementById('exercice-date-fin').value;
+  const el = document.getElementById('exercice-duree');
+  if (!debut || !fin) { el.textContent = ''; return; }
+  const n = nombreMoisEntre(debut, fin);
+  el.textContent = (n >= 1 && n <= 36) ? `Durée : ${n} mois` : 'Vérifie les dates (durée incohérente).';
+}
+document.getElementById('exercice-date-debut').addEventListener('change', updateExerciceDureeUi);
+document.getElementById('exercice-date-fin').addEventListener('change', updateExerciceDureeUi);
 
 document.getElementById('form-exercice').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -445,38 +502,84 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
   msg.className = 'login-msg';
 
   const societeId = document.getElementById('exercice-societe').value;
-  const annee = parseInt(document.getElementById('exercice-annee').value, 10);
+  const dateDebut = document.getElementById('exercice-date-debut').value;
+  const dateFin = document.getElementById('exercice-date-fin').value;
   const fileInput = document.getElementById('exercice-fichier');
   const file = fileInput.files[0];
   const typeImport = document.querySelector('input[name="exercice-type"]:checked').value;
-  if (!societeId || !annee || !file) return;
+  if (!societeId || !dateDebut || !dateFin || !file) return;
+
+  const nombreMois = nombreMoisEntre(dateDebut, dateFin);
+  if (nombreMois < 1 || nombreMois > 36) {
+    msg.textContent = "La date de fin doit être postérieure à la date de début (durée incohérente).";
+    msg.classList.add('error');
+    return;
+  }
+  const annee = parseInt(dateFin.slice(0, 4), 10);
+  // Une période complète de 12 mois commençant au 1er janvier garde l'ID "année" (comme avant,
+  // pour réimporter/écraser un exercice complet existant) ; une période partielle a son propre ID
+  // (date de fin), ce qui permet d'avoir plusieurs périodes la même année civile.
+  const anneeComplete = nombreMois === 12 && dateDebut.slice(5) === '01-01';
+  const exerciceId = anneeComplete ? String(annee) : dateFin;
 
   try {
-    const buffer = await file.arrayBuffer();
     const societeMapping = societesCache.find(s => s.id === societeId)?.mappingComptes || mappingParDefaut();
-    const parsed = typeImport === 'detaillee'
-      ? parseBalanceDetaillee(buffer, societeMapping)
-      : parseArithmosWorkbook(buffer);
+    let parsed;
+    if (typeImport === 'detaillee') {
+      parsed = parseBalanceDetaillee(await file.arrayBuffer(), societeMapping);
+    } else if (typeImport === 'bnb_officiel') {
+      parsed = parseBnbOfficiel(await file.text());
+      // Les sous-totaux officiels (bilan, résultats) sont fiables à la source ; en secours
+      // seulement (fichier incomplet/atypique), on retombe sur le calcul à partir des rubriques.
+      const totauxRecalcules = computeTotaux(parsed.valeurs);
+      parsed.totaux = {
+        totalActif: parsed.totaux.totalActif || totauxRecalcules.totalActif,
+        totalPassif: parsed.totaux.totalPassif || totauxRecalcules.totalPassif,
+        resultatExploitation: parsed.totaux.resultatExploitation || totauxRecalcules.resultatExploitation,
+        resultatCourant: parsed.totaux.resultatCourant || totauxRecalcules.resultatCourant,
+        resultatAvantImpot: parsed.totaux.resultatAvantImpot || totauxRecalcules.resultatAvantImpot,
+        resultatExercice: parsed.totaux.resultatExercice || totauxRecalcules.resultatExercice,
+      };
+    } else {
+      parsed = parseArithmosWorkbook(await file.arrayBuffer());
+    }
 
-    if (Object.keys(parsed.valeurs).length === 0 || (typeImport === 'detaillee' && parsed.nbComptes === 0)) {
+    if (Object.keys(parsed.valeurs).length === 0 || (typeImport === 'detaillee' && parsed.nbComptes === 0) ||
+        (typeImport === 'bnb_officiel' && !parsed.nbCodes)) {
       msg.textContent = typeImport === 'detaillee'
         ? "Aucun compte reconnu dans ce fichier — vérifie que la colonne Compte contient bien des numéros et la colonne Solde des montants."
+        : typeImport === 'bnb_officiel'
+        ? "Aucune donnée reconnue dans ce fichier — vérifie qu'il s'agit bien du fichier .csv téléchargé depuis le site de la BNB."
         : "Aucune donnée reconnue dans ce fichier — utilise le modèle Arithmos sans modifier les codes/libellés.";
       msg.classList.add('error');
       return;
     }
 
-    const societeNom = societesCache.find(s => s.id === societeId)?.nom || '';
-    if (parsed.societeFichier && parsed.societeFichier.toLowerCase() !== societeNom.toLowerCase()) {
+    const societeChoisie = societesCache.find(s => s.id === societeId);
+    const societeNom = societeChoisie?.nom || '';
+    // Le dépôt officiel BNB porte le numéro d'entreprise : vérification plus fiable qu'une
+    // comparaison de nom (raison sociale parfois orthographiée différemment).
+    const numeroMismatch = parsed.numeroEntrepriseFichier && societeChoisie?.numeroEntreprise &&
+      parsed.numeroEntrepriseFichier.replace(/\D/g, '') !== societeChoisie.numeroEntreprise.replace(/\D/g, '');
+    if (numeroMismatch) {
+      msg.textContent = `Attention : le fichier est au nom de "${parsed.societeFichier}" (n° ${parsed.numeroEntrepriseFichier}), différent de la société sélectionnée (${societeNom}). Import quand même sous ${societeNom}.`;
+      msg.classList.add('warn');
+    } else if (parsed.societeFichier && parsed.societeFichier.toLowerCase() !== societeNom.toLowerCase()) {
       msg.textContent = `Attention : le fichier indique "${parsed.societeFichier}", différent de la société sélectionnée (${societeNom}). Import quand même sous ${societeNom}.`;
       msg.classList.add('warn');
     }
-    if (parsed.anneeFichier && parseInt(parsed.anneeFichier, 10) !== annee) {
-      toast(`Le fichier indiquait l'exercice ${parsed.anneeFichier}, importé sous ${annee} comme sélectionné.`);
+    if ((parsed.dateDebutFichier && parsed.dateDebutFichier !== dateDebut) || (parsed.dateFinFichier && parsed.dateFinFichier !== dateFin)) {
+      toast(`Le fichier indiquait une autre période — importé sous la période saisie (${dateDebut} → ${dateFin}).`);
+    }
+    if (typeImport === 'bnb_officiel' && parsed.chiffreAffairesEstMargeBrute) {
+      toast("Ce dépôt ne précise pas de chiffre d'affaires séparé (option \"marge brute\") : la marge brute a été utilisée à sa place pour les KPI basés sur le CA.");
     }
 
-    await setDoc(doc(db, 'societes', societeId, 'exercices', String(annee)), {
+    await setDoc(doc(db, 'societes', societeId, 'exercices', exerciceId), {
       annee,
+      dateDebut,
+      dateFin,
+      nombreMois,
       valeurs: parsed.valeurs,
       totaux: parsed.totaux,
       typeImport,
@@ -484,7 +587,7 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
       importePar: currentUid,
     });
 
-    toast(`Exercice ${annee} importé.`);
+    toast(`Exercice importé (${labelPeriode({ dateDebut, dateFin, nombreMois, annee })}).`);
     closeModal('modal-exercice');
     document.getElementById('comptes-societe-select').value = societeId;
     await loadExercices();
@@ -730,7 +833,7 @@ function escapeHtml(str) {
 
 // ---------- KPI ----------
 let kpiExercicesCache = []; // tous les exercices (triés par année) de la société actuellement affichée
-let kpiExportCourant = { nomSociete: '', annee: null, kpis: [] }; // pour les boutons Export PDF / Excel
+let kpiExportCourant = { nomSociete: '', periodeLabel: '', kpis: [] }; // pour les boutons Export PDF / Excel
 
 async function loadKpiSociete() {
   const societeId = document.getElementById('kpi-societe-select').value;
@@ -743,8 +846,11 @@ async function loadKpiSociete() {
     return;
   }
 
-  const snap = await getDocs(query(collection(db, 'societes', societeId, 'exercices'), orderBy('annee', 'asc')));
-  kpiExercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Tri côté client par date de fin (pas de orderBy côté serveur : les exercices importés avant
+  // V10-001 n'ont pas de champ dateFin, ce qui les exclurait d'un orderBy Firestore).
+  const snap = await getDocs(collection(db, 'societes', societeId, 'exercices'));
+  kpiExercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => periodeDe(a).dateFin.localeCompare(periodeDe(b).dateFin));
 
   if (kpiExercicesCache.length === 0) {
     exerciceSelect.innerHTML = '';
@@ -752,10 +858,10 @@ async function loadKpiSociete() {
     return;
   }
 
-  // Exercice analysé par défaut : le plus récent.
+  // Exercice analysé par défaut : le plus récent (dernière date de fin).
   exerciceSelect.innerHTML = kpiExercicesCache
     .slice().reverse()
-    .map(ex => `<option value="${ex.annee}">${ex.annee}</option>`).join('');
+    .map(ex => `<option value="${ex.id}">${escapeHtml(labelPeriode(ex))}</option>`).join('');
 
   renderKpiContent();
 }
@@ -765,41 +871,45 @@ document.getElementById('kpi-exercice-select').addEventListener('change', render
 
 function renderKpiContent() {
   const content = document.getElementById('kpi-content');
-  const anneeSelectionnee = parseInt(document.getElementById('kpi-exercice-select').value, 10);
-  const exercice = kpiExercicesCache.find(ex => ex.annee === anneeSelectionnee) || kpiExercicesCache[kpiExercicesCache.length - 1];
+  const exerciceId = document.getElementById('kpi-exercice-select').value;
+  const exercice = kpiExercicesCache.find(ex => ex.id === exerciceId) || kpiExercicesCache[kpiExercicesCache.length - 1];
   if (!exercice) { content.innerHTML = ''; return; }
 
-  const kpis = calculerKPI(exercice.valeurs, exercice.totaux);
+  const periode = periodeDe(exercice);
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois);
 
   const societeId = document.getElementById('kpi-societe-select').value;
   kpiExportCourant = {
     nomSociete: societesCache.find(s => s.id === societeId)?.nom || '',
-    annee: exercice.annee,
+    periodeLabel: labelPeriode(exercice),
     kpis,
   };
 
-  // Historique par KPI (toutes les années importées, pour la sparkline), aligné sur l'ordre chronologique.
+  // Historique par KPI (tous les exercices importés, pour la sparkline), aligné sur l'ordre chronologique.
   const historiquesParCode = {};
   kpiExercicesCache.forEach(ex => {
-    const kpisEx = calculerKPI(ex.valeurs, ex.totaux);
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois);
     kpisEx.forEach(k => {
       if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
-      historiquesParCode[k.code].push({ label: String(ex.annee), value: k.valeur });
+      historiquesParCode[k.code].push({ label: labelCourtPeriode(ex), value: k.valeur });
     });
   });
+
+  const entete = `<p class="panel-sub" style="margin:-4px 0 14px;">Période analysée : <strong>${escapeHtml(labelPeriode(exercice))}</strong></p>`;
 
   const html = GROUPES_KPI.map(groupe => {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
         ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
+      const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
       return `
         <div class="kpi-card">
           <div class="kpi-card-head">
             <h4>${escapeHtml(k.label)}</h4>
             <span class="kpi-badge ${k.statut}">${labelStatut(k.statut)}</span>
           </div>
-          <div class="kpi-value">${escapeHtml(k.affichage)}</div>
+          <div class="kpi-value">${escapeHtml(k.affichage)}${parMois}</div>
           ${renderSparkline(historiquesParCode[k.code] || [], { format })}
           <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
         </div>`;
@@ -807,7 +917,7 @@ function renderKpiContent() {
     return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
   }).join('');
 
-  content.innerHTML = html;
+  content.innerHTML = entete + html;
 }
 
 function labelStatut(statut) {
@@ -816,11 +926,11 @@ function labelStatut(statut) {
 
 document.getElementById('kpi-export-pdf').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
-  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.annee, kpiExportCourant.kpis);
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
 });
 document.getElementById('kpi-export-excel').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
-  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.annee, kpiExportCourant.kpis);
+  exportKpiExcel(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis);
 });
 
 // ---------- Contenu éditable des pages publiques ----------

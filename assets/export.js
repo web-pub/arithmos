@@ -1,23 +1,26 @@
-// Arithmos — Export des KPI en PDF / Excel (V08-001)
+// Arithmos — Export des KPI en PDF / Excel (V10-001)
 // Utilise les librairies globales chargées en <script> classique :
 //   - window.XLSX   (SheetJS, déjà utilisé pour l'import des comptes annuels)
 //   - window.jspdf.jsPDF (jsPDF, chargée uniquement pour cet export)
 // Pas de dépendance ES module supplémentaire : ces deux fonctions prennent
 // directement le tableau de KPI renvoyé par calculerKPI() + le nom de la
-// société et l'année de l'exercice affiché.
+// société et le libellé de la période affichée (ex. "2024 (12 mois)").
 
-function nomFichier(nomSociete, annee, extension) {
-  const base = (nomSociete || 'societe').toLowerCase()
+function slug(str) {
+  return String(str || '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  return `arithmos-kpi-${base}-${annee}.${extension}`;
+}
+
+function nomFichier(nomSociete, periodeLabel, extension) {
+  return `arithmos-kpi-${slug(nomSociete) || 'societe'}-${slug(periodeLabel) || 'periode'}.${extension}`;
 }
 
 function labelStatutExport(statut) {
   return { bon: 'Bon', correct: 'Correct', fragile: 'À surveiller', neutre: '—' }[statut] || '—';
 }
 
-export function exportKpiExcel(nomSociete, annee, kpis) {
+export function exportKpiExcel(nomSociete, periodeLabel, kpis) {
   if (!window.XLSX) {
     alert("La librairie d'export Excel n'a pas pu être chargée. Vérifie la connexion internet et réessaie.");
     return;
@@ -25,18 +28,18 @@ export function exportKpiExcel(nomSociete, annee, kpis) {
   const rows = kpis.map(k => ({
     'Groupe': k.groupe,
     'Indicateur': k.label,
-    'Valeur': k.affichage,
+    'Valeur': k.affichage + (k.parMois ? ` (${k.parMois}/mois)` : ''),
     'Statut': labelStatutExport(k.statut),
     'Analyse': k.analyse,
   }));
   const ws = window.XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 14 }, { wch: 12 }, { wch: 80 }];
+  ws['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 12 }, { wch: 80 }];
   const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, `KPI ${annee}`.slice(0, 31));
-  window.XLSX.writeFile(wb, nomFichier(nomSociete, annee, 'xlsx'));
+  window.XLSX.utils.book_append_sheet(wb, ws, 'KPI'.concat(' ', periodeLabel || '').slice(0, 31));
+  window.XLSX.writeFile(wb, nomFichier(nomSociete, periodeLabel, 'xlsx'));
 }
 
-export function exportKpiPdf(nomSociete, annee, kpis) {
+export function exportKpiPdf(nomSociete, periodeLabel, kpis) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     alert("La librairie d'export PDF n'a pas pu être chargée. Vérifie la connexion internet et réessaie.");
     return;
@@ -56,7 +59,7 @@ export function exportKpiPdf(nomSociete, annee, kpis) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.setTextColor(40, 76, 120); // navy-700
-  doc.text(`${nomSociete || 'Société'} — Exercice ${annee}`, marginX, y);
+  doc.text(`${nomSociete || 'Société'} — ${periodeLabel || 'Période'}`, marginX, y);
   y += 5;
   doc.setFontSize(9);
   doc.setTextColor(120, 120, 120);
@@ -94,7 +97,8 @@ export function exportKpiPdf(nomSociete, annee, kpis) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(20, 20, 20);
-      doc.text(String(k.affichage), pageWidth - marginX, y, { align: 'right' });
+      const valeurTexte = String(k.affichage) + (k.parMois ? ` (${k.parMois}/mois)` : '');
+      doc.text(valeurTexte, pageWidth - marginX, y, { align: 'right' });
       y += 5;
 
       const coul = couleurStatut[k.statut] || couleurStatut.neutre;

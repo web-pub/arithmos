@@ -1,4 +1,4 @@
-// Arithmos — Moteur de calcul des KPI comptables belges (V04-001)
+// Arithmos — Moteur de calcul des KPI comptables belges (V10-001)
 // Calcule, à partir des valeurs importées d'un exercice (voir admin.js / CODE_MAP),
 // un jeu standard de ratios de liquidité, solvabilité, rentabilité et trésorerie,
 // avec seuils d'interprétation usuels pour une PME belge (schéma abrégé).
@@ -32,7 +32,11 @@ function agregats(v, t) {
 
 // Chaque KPI : code, libellé, groupe, valeur calculée, formule (texte), formatage,
 // seuils (bon / correct / fragile) et phrase d'analyse générée dynamiquement.
-export function calculerKPI(valeurs, totaux) {
+// nombreMois : durée de la période couverte par l'exercice (12 par défaut, pour les exercices
+// importés avant la gestion des périodes). Sert uniquement à donner une valeur "par mois" pour
+// le cash-flow (seul KPI en montant € basé sur un flux) — les KPI en % restent comparables
+// tels quels d'une période à l'autre, sans retraitement.
+export function calculerKPI(valeurs, totaux, nombreMois = 12) {
   const v = valeurs || {};
   const t = totaux || {};
   const { actifsCirculants, dettesCT } = agregats(v, t);
@@ -52,7 +56,7 @@ export function calculerKPI(valeurs, totaux) {
   const cashFlow = (t.resultatExercice || 0) + (v.amortissements || 0);
   const tresorerieNette = (v.valeursDisponibles || 0) + (v.placementsTresorerie || 0) - (v.dettesFinancieresCT || 0);
 
-  function kpi(code, label, groupe, valeur, format, seuils, analyse) {
+  function kpi(code, label, groupe, valeur, format, seuils, analyse, parMois) {
     let statut = 'neutre';
     if (valeur !== null && valeur !== undefined && seuils) {
       if (seuils.sens === 'haut') {
@@ -66,6 +70,7 @@ export function calculerKPI(valeurs, totaux) {
       affichage: format(valeur),
       statut,
       analyse: analyse(valeur, statut),
+      parMois: (parMois === undefined || parMois === null) ? null : eur(parMois),
     };
   }
 
@@ -129,8 +134,9 @@ export function calculerKPI(valeurs, totaux) {
     kpi('cash_flow', "Cash-flow (capacité d'autofinancement)", 'Trésorerie', cashFlow, eur,
       { sens: 'haut', bon: 0.0001, correct: -Infinity },
       (val, st) => val === null ? "Pas assez de données pour ce calcul." :
-        val >= 0 ? `La société dégage ${eur(val)} de capacité d'autofinancement (résultat + amortissements), de quoi financer une partie de ses futurs investissements sans emprunt supplémentaire.` :
-        `La capacité d'autofinancement est négative (${eur(val)}) : l'activité ne génère pas de ressources propres sur l'exercice.`),
+        val >= 0 ? `La société dégage ${eur(val)} de capacité d'autofinancement (résultat + amortissements) sur la période, de quoi financer une partie de ses futurs investissements sans emprunt supplémentaire.` :
+        `La capacité d'autofinancement est négative (${eur(val)}) sur la période : l'activité ne génère pas de ressources propres.`,
+      nombreMois ? cashFlow / nombreMois : null),
 
     kpi('tresorerie_nette', 'Trésorerie nette', 'Trésorerie', tresorerieNette, eur,
       { sens: 'haut', bon: 0.0001, correct: -Infinity },
