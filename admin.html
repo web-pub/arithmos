@@ -20,7 +20,7 @@
     </a>
     <div class="admin-title-block">
       <div class="site-title">Arithmos</div>
-      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V09-001</span>
+      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V10-001</span>
     </div>
   </div>
   <div class="admin-user">
@@ -225,10 +225,17 @@
         <label for="exercice-societe">Société *</label>
         <select id="exercice-societe" required></select>
       </div>
-      <div class="field">
-        <label for="exercice-annee">Exercice (année) *</label>
-        <input type="number" id="exercice-annee" min="2000" max="2100" required>
+      <div class="field" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label for="exercice-date-debut">Date de début *</label>
+          <input type="date" id="exercice-date-debut" required>
+        </div>
+        <div style="flex:1;">
+          <label for="exercice-date-fin">Date de fin *</label>
+          <input type="date" id="exercice-date-fin" required>
+        </div>
       </div>
+      <p class="panel-sub" id="exercice-duree" style="margin:-4px 0 14px;"></p>
       <div class="field">
         <label>Type de fichier *</label>
         <label style="display:block;font-weight:400;font-size:14px;margin:4px 0;">
@@ -237,13 +244,17 @@
         <label style="display:block;font-weight:400;font-size:14px;margin:4px 0 8px;">
           <input type="radio" name="exercice-type" value="detaillee"> Balance comptable détaillée
         </label>
+        <label style="display:block;font-weight:400;font-size:14px;margin:4px 0 8px;">
+          <input type="radio" name="exercice-type" value="bnb_officiel"> Dépôt officiel BNB (fichier .csv)
+        </label>
       </div>
       <div class="field">
-        <label for="exercice-fichier">Fichier Excel (modèle Arithmos) *</label>
+        <label for="exercice-fichier" id="label-exercice-fichier">Fichier Excel (modèle Arithmos) *</label>
         <input type="file" id="exercice-fichier" accept=".xlsx" required>
         <small>
           <a id="lien-modele-bnb" href="assets/arithmos-modele-comptes-annuels.xlsx" download>Télécharger le modèle bilan BNB</a>
           <a id="lien-modele-detaille" href="assets/arithmos-modele-balance-detaillee.xlsx" download style="display:none;">Télécharger le modèle balance détaillée</a>
+          <span id="aide-modele-bnb-officiel" style="display:none;color:var(--ink-soft);">Le fichier <strong>.csv</strong> téléchargé depuis le site de la BNB (Centrale des bilans), après le dépôt des comptes annuels — aucune mise en forme nécessaire.</span>
         </small>
       </div>
       <p class="login-msg" id="exercice-msg"></p>
