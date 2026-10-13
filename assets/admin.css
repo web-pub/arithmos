@@ -63,6 +63,12 @@
 }
 .stat-tile .num{font-family:var(--font-display);font-size:30px;color:var(--navy-900);}
 .stat-tile .label{font-size:13px;color:var(--ink-soft);margin-top:4px;}
+.stat-tile.clickable{
+  cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit;
+  transition:border-color .15s,box-shadow .15s;
+}
+.stat-tile.clickable:hover{border-color:var(--teal-600,#316A6C);box-shadow:0 1px 6px rgba(0,0,0,.06);}
+.stat-tile.clickable:focus-visible{outline:2px solid var(--teal-600,#316A6C);outline-offset:2px;}
 
 .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap;}
 .btn-small{

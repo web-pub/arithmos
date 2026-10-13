@@ -3,7 +3,13 @@
 // trait fin, extrémités arrondies, points cliquables avec info-bulle native (<title>).
 
 const LINE_COLOR = '#316A6C';   // sarcelle de marque Arithmos
-const LINE_COLOR_NEG = '#C0392B'; // rouge discret, utilisé seulement si toutes les valeurs sont négatives
+const LINE_COLOR_NEG = '#C0392B'; // rouge discret, utilisé seulement si toutes les valeurs sont défavorables
+// Pour la grande majorité des KPI (montants €, marges, rentabilité...), une valeur négative est
+// défavorable (perte, trésorerie négative...) : rouge quand toutes les valeurs sont <= 0 est le bon
+// repère visuel par défaut. MAIS pour "Écart délais clients / fournisseurs" (kpi.js), c'est l'inverse :
+// négatif = favorable (les clients paient avant que les fournisseurs doivent être réglés), positif =
+// défavorable. opts.sensInverse (ou l'argument sensInverse de renderSparkline) inverse donc la règle
+// pour ces KPI-là — sans ça, un bon résultat s'affichait en rouge et inversement.
 const GRID_COLOR = '#E4E1D9';
 const TEXT_COLOR = '#6B7280';
 
@@ -33,8 +39,8 @@ export function renderSparkline(points, opts = {}) {
     return { x, y, label: p.label, value: p.value };
   });
 
-  const allNegative = values.every(v => v <= 0);
-  const stroke = allNegative ? LINE_COLOR_NEG : LINE_COLOR;
+  const defavorable = opts.sensInverse ? values.every(v => v > 0) : values.every(v => v <= 0);
+  const stroke = defavorable ? LINE_COLOR_NEG : LINE_COLOR;
 
   const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
 
@@ -109,7 +115,10 @@ export function htmlCourbeKpi(id) {
 export function montrerCourbeKpi(id, points, opts = {}) {
   const valides = (points || []).filter(p => typeof p.value === 'number');
   if (valides.length < 2) return false;
-  const couleur = valides.every(p => p.value <= 0) ? LINE_COLOR_NEG : LINE_COLOR;
+  const defavorable = opts.sensInverse
+    ? valides.every(p => p.value > 0)
+    : valides.every(p => p.value <= 0);
+  const couleur = defavorable ? LINE_COLOR_NEG : LINE_COLOR;
   montage(id, {
     type: 'line',
     data: {

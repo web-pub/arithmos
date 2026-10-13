@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, collectionGroup, getDocs, query, orderBy, serverTimestamp
+  collection, getDocs, query, orderBy, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { calculerKPI, GROUPES_KPI } from "./kpi.js";
@@ -75,19 +75,30 @@ document.querySelectorAll('[data-close-modal]').forEach(btn => {
 });
 
 // ---------- tabs ----------
+// activerTab() centralise le changement d'onglet (bouton de nav standard OU clic sur une tuile du
+// tableau de bord) : même logique d'activation + chargement des données propres à l'onglet, dans
+// les deux cas.
+function activerTab(nomTab) {
+  const btnNav = document.querySelector(`#admin-tabs button[data-tab="${nomTab}"]`);
+  if (!btnNav || btnNav.style.display === 'none') return; // onglet inexistant ou masqué pour ce rôle
+  document.querySelectorAll('#admin-tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btnNav.classList.add('active');
+  document.getElementById('panel-' + nomTab).classList.add('active');
+  if (nomTab === 'passwords') loadPasswordsPanel();
+  if (nomTab === 'comptes') loadExercices();
+  if (nomTab === 'kpi') loadKpiSociete();
+  if (nomTab === 'bnb') loadBnbSociete();
+  if (nomTab === 'contenu') loadContenu();
+  if (nomTab === 'maintenance') loadConnexions();
+}
 document.querySelectorAll('#admin-tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#admin-tabs button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'passwords') loadPasswordsPanel();
-    if (btn.dataset.tab === 'comptes') loadExercices();
-    if (btn.dataset.tab === 'kpi') loadKpiSociete();
-    if (btn.dataset.tab === 'bnb') loadBnbSociete();
-    if (btn.dataset.tab === 'contenu') loadContenu();
-    if (btn.dataset.tab === 'maintenance') loadConnexions();
-  });
+  btn.addEventListener('click', () => activerTab(btn.dataset.tab));
+});
+// Tuiles cliquables du tableau de bord : même mécanisme, pour accéder directement à ce qu'il y a
+// "derrière" chaque chiffre (sociétés, accès, exercices, KPI).
+document.querySelectorAll('#panel-dashboard .stat-tile.clickable').forEach(tuile => {
+  tuile.addEventListener('click', () => activerTab(tuile.dataset.tab));
 });
 
 function applyRoleVisibility(role) {
@@ -856,14 +867,43 @@ async function changePassword(uid, email) {
 }
 
 // ---------- Dashboard ----------
+// Nombre entier simple (compteurs du tableau de bord) avec le même séparateur de milliers que
+// partout ailleurs sur le site (espace tous les 3 chiffres, format fr-BE) — cohérence demandée.
+function formatNombre(n) {
+  return (typeof n === 'number' ? n : 0).toLocaleString('fr-BE');
+}
+
 async function loadDashboard() {
-  document.getElementById('stat-societes').textContent = societesCache.length || '0';
-  document.getElementById('stat-acces').textContent = accesCache.length || '0';
+  document.getElementById('stat-societes').textContent = formatNombre(societesCache.length);
+
+  // Compte "Accès résultats actifs" : interrogé directement (où role == 'lecteur') plutôt que de
+  // dépendre d'accesCache, qui n'est rempli qu'après un passage par l'onglet Accès — sinon le
+  // tableau de bord affichait "0" tant que cet onglet n'avait pas été ouvert dans la session.
   try {
-    const snap = await getDocs(collectionGroup(db, 'exercices'));
-    document.getElementById('stat-bilans').textContent = snap.size || '0';
+    const accesSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'lecteur')));
+    accesCache.length = 0; // garde accesCache à jour même si l'onglet Accès n'a pas encore été ouvert
+    accesSnap.docs.forEach(d => accesCache.push({ id: d.id, ...d.data() }));
+    document.getElementById('stat-acces').textContent = formatNombre(accesSnap.size);
   } catch (err) {
-    document.getElementById('stat-bilans').textContent = '0';
+    document.getElementById('stat-acces').textContent = formatNombre(accesCache.length);
+  }
+
+  // Compte "Exercices importés" (et, au passage, "Sociétés avec KPI disponibles") : une requête
+  // collectionGroup() directe peut échouer selon la configuration Firestore (index/règles) et
+  // retombait silencieusement sur "0" — ce qui donnait un chiffre faux plutôt qu'une erreur visible.
+  // On interroge donc directement chaque société (une requête par société, en parallèle), plus
+  // robuste, et ça donne aussi le détail par société nécessaire pour la tuile KPI.
+  try {
+    const comptesParSociete = await Promise.all(
+      societesCache.map(s => getDocs(collection(db, 'societes', s.id, 'exercices')))
+    );
+    const totalExercices = comptesParSociete.reduce((somme, snap) => somme + snap.size, 0);
+    const societesAvecKpi = comptesParSociete.filter(snap => snap.size > 0).length;
+    document.getElementById('stat-bilans').textContent = formatNombre(totalExercices);
+    document.getElementById('stat-kpi').textContent = formatNombre(societesAvecKpi);
+  } catch (err) {
+    document.getElementById('stat-bilans').textContent = '—';
+    document.getElementById('stat-kpi').textContent = '—';
   }
 }
 
@@ -1093,15 +1133,16 @@ function renderKpiContent() {
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
         ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' :
-        k.code.includes('delai') || k.code === 'ecart_delais' ? 'jours' : null;
+        k.code.includes('delai') || k.code === 'ecart_delais' || k.code === 'rotation_stocks' ? 'jours' : null;
+      const sensInverse = k.code === 'ecart_delais';
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
       const historique = historiquesParCode[k.code] || [];
       const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
       const idCourbe = `kc-admin-${k.code}`;
       const courbeOuSpark = assezDePoints
         ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
-        : renderSparkline(historique, { format });
-      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
+        : renderSparkline(historique, { format, sensInverse });
+      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format, sensInverse };
       const lignesDetail = detailKpi(k.code, exercice.valeurs, exercice.totaux, exercice.typeImport, societeChoisie?.mappingComptes);
       return `
         <div class="kpi-card">
@@ -1131,7 +1172,7 @@ function renderKpiContent() {
       { label: 'Total actif', data: kpiExercicesCache.map(ex => ex.totaux?.totalActif || 0), color: '#C9A227' },
     ]);
   }
-  Object.entries(courbesAMonter).forEach(([id, { historique, format }]) => montrerCourbeKpi(id, historique, { format }));
+  Object.entries(courbesAMonter).forEach(([id, { historique, format, sensInverse }]) => montrerCourbeKpi(id, historique, { format, sensInverse }));
 }
 
 // Section dépliable "Voir le détail du calcul" : une ligne par rubrique PCMN/BNB impliquée dans

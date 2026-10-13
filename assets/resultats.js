@@ -166,15 +166,16 @@ function renderContent() {
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
         ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' :
-        k.code.includes('delai') || k.code === 'ecart_delais' ? 'jours' : null;
+        k.code.includes('delai') || k.code === 'ecart_delais' || k.code === 'rotation_stocks' ? 'jours' : null;
+      const sensInverse = k.code === 'ecart_delais';
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
       const historique = historiquesParCode[k.code] || [];
       const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
       const idCourbe = `kc-resultats-${k.code}`;
       const courbeOuSpark = assezDePoints
         ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
-        : renderSparkline(historique, { format });
-      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
+        : renderSparkline(historique, { format, sensInverse });
+      if (assezDePoints) courbesAMonter[idCourbe] = { historique, format, sensInverse };
       const lignesDetail = detailKpi(k.code, exercice.valeurs, exercice.totaux, exercice.typeImport, societeChoisie?.mappingComptes);
       return `
         <div class="kpi-card">
@@ -202,7 +203,7 @@ function renderContent() {
       { label: 'Total actif', data: exercicesCache.map(ex => ex.totaux?.totalActif || 0), color: '#C9A227' },
     ]);
   }
-  Object.entries(courbesAMonter).forEach(([id, { historique, format }]) => montrerCourbeKpi(id, historique, { format }));
+  Object.entries(courbesAMonter).forEach(([id, { historique, format, sensInverse }]) => montrerCourbeKpi(id, historique, { format, sensInverse }));
 }
 
 function labelStatut(statut) {
