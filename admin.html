@@ -34,6 +34,7 @@
   <button data-tab="societes">Sociétés</button>
   <button data-tab="comptes">Comptes annuels</button>
   <button data-tab="kpi">KPI</button>
+  <button data-tab="bnb">Chiffres BNB</button>
   <button data-tab="acces">Accès</button>
   <button data-tab="contenu">Contenu</button>
   <button data-tab="passwords" data-role="superadmin">Mots de passe</button>
@@ -101,6 +102,23 @@
       </div>
     </div>
     <div id="kpi-content"></div>
+  </section>
+
+  <!-- Chiffres BNB (lecture des montants bruts importés, présentation actif/passif/charges/produits) -->
+  <section class="panel" id="panel-bnb">
+    <h2>Chiffres BNB</h2>
+    <p class="panel-sub">Les montants importés, tels que présentés dans un bilan déposé à la BNB — bilan (actif/passif) et compte de résultats (produits/charges), sans ratio ni interprétation.</p>
+    <div class="toolbar">
+      <div class="field" style="min-width:260px;margin:0;">
+        <label for="bnb-societe-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Société</label>
+        <select id="bnb-societe-select"></select>
+      </div>
+      <div class="field" style="min-width:160px;margin:0;">
+        <label for="bnb-exercice-select" style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">Exercice</label>
+        <select id="bnb-exercice-select"></select>
+      </div>
+    </div>
+    <div id="bnb-content"></div>
   </section>
 
   <!-- Accès -->
