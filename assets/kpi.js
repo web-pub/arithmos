@@ -91,6 +91,15 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12, tauxTVA = 0.21, es
   const delaiFournisseurs = diviseEnJours(v.dettesCommercialesCT || 0, ((v.achats || 0) + (v.servicesBiensDivers || 0)) * facteurTVA, dureeJours);
   const ecartDelais = (delaiClients !== null && delaiFournisseurs !== null) ? delaiClients - delaiFournisseurs : null;
 
+  // Vitesse de rotation des stocks, exprimée en jours (nombre de jours de stock disponible) :
+  // stocks (code BNB 3) / coût des ventes × durée de l'exercice en jours. "Coût des ventes" n'a pas
+  // de rubrique BNB dédiée dans le schéma abrégé : on utilise la même approximation que pour le
+  // délai fournisseurs (achats + services et biens divers, codes 60/61), déjà en hors TVA comme les
+  // stocks (valeurs de bilan, toujours hors TVA) — donc pas de correction TVA nécessaire ici,
+  // contrairement aux délais clients/fournisseurs. Se neutralise naturellement (null) en mode
+  // "marge brute" puisque achats et services y sont alors forcés à 0.
+  const rotationStocks = diviseEnJours(v.stocks || 0, (v.achats || 0) + (v.servicesBiensDivers || 0), dureeJours);
+
   function kpi(code, label, groupe, valeur, format, seuils, analyse, parMois) {
     let statut = 'neutre';
     if (valeur !== null && valeur !== undefined && seuils) {
@@ -209,7 +218,16 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12, tauxTVA = 0.21, es
         val <= 0 ? `Les clients paient en moyenne ${jours(Math.abs(val))} avant l'échéance moyenne des fournisseurs : un cycle favorable, les ventes financent les achats.` :
         st === 'correct' ? `Les clients paient en moyenne ${jours(val)} après que les fournisseurs doivent être réglés : un écart à surveiller, qui crée un besoin de financement à court terme.` :
         `Les clients paient en moyenne ${jours(val)} après que les fournisseurs doivent être réglés : un écart important — la société doit financer ce décalage (trésorerie ou crédit court terme).`),
+
+    kpi('rotation_stocks', 'Vitesse de rotation des stocks', 'Stocks', rotationStocks, jours,
+      { sens: 'bas', bon: 60, correct: 90 },
+      (val, st) => val === null ? (estMargeBrute ?
+          "Non calculable : ce dépôt BNB ne précise pas les achats et services (seulement une marge brute globale) — le coût des ventes ne peut pas être reconstitué à partir de la marge seule." :
+          "Pas assez de données pour ce ratio (achats et services manquants ou nuls).") :
+        (st === 'bon' ? `Les stocks se renouvellent en moyenne tous les ${jours(val)} : une rotation rapide, qui immobilise peu de trésorerie en marchandises.` :
+        st === 'correct' ? `Les stocks se renouvellent en moyenne tous les ${jours(val)} : un rythme correct, mais à surveiller selon le secteur d'activité.` :
+        `Les stocks se renouvellent en moyenne tous les ${jours(val)} : un délai long, qui immobilise beaucoup de trésorerie en marchandises (la norme varie fortement selon le secteur).`)),
   ];
 }
 
-export const GROUPES_KPI = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement'];
+export const GROUPES_KPI = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement', 'Stocks'];

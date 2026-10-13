@@ -192,6 +192,11 @@ export const KPI_DEPENDANCES = {
     { cle: 'achats', signe: 1, role: 'terme' },
     { cle: 'servicesBiensDivers', signe: 1, role: 'terme' },
   ],
+  rotation_stocks: [
+    { cle: 'stocks', signe: 1, role: 'numerateur' },
+    { cle: 'achats', signe: 1, role: 'denominateur' },
+    { cle: 'servicesBiensDivers', signe: 1, role: 'denominateur' },
+  ],
 };
 
 // Pour l'import "Bilan BNB" (schéma abrégé) : code du modèle Excel Arithmos par clé "valeurs".

@@ -218,7 +218,7 @@ export function exportKpiPdf(nomSociete, periodeLabel, kpis, sante, graphiques) 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...TEAL);
-    doc.text('Profil global (4 groupes de KPI)', marginX, y);
+    doc.text('Profil global (par groupe de KPI)', marginX, y);
     y += 2;
     doc.setDrawColor(...TEAL);
     doc.line(marginX, y, pageWidth - marginX, y);
@@ -242,7 +242,7 @@ export function exportKpiPdf(nomSociete, periodeLabel, kpis, sante, graphiques) 
   }
 
   // ---------- Détail des KPI, par groupe, en cartes (texte + courbe) ----------
-  const groupes = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement'];
+  const groupes = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement', 'Stocks'];
   groupes.forEach(groupe => {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
     if (kpisDuGroupe.length === 0) return;

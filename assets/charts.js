@@ -165,17 +165,25 @@ export function montrerJaugeScore(id, scoreGlobal) {
   }
 }
 
-// Radar (profil) des 4 groupes de KPI (Liquidité, Solvabilité, Rentabilité, Trésorerie), chacun
-// ramené à un score /100 — même échelle que le score global. groupesAnterieurs (facultatif) affiche
-// l'exercice précédent en superposition, pour visualiser l'évolution du profil d'un coup d'œil.
+// Radar (profil) des groupes de KPI (Liquidité, Solvabilité, Rentabilité, Trésorerie, Délais de
+// paiement, Stocks), chacun ramené à un score /100 — même échelle que le score global.
+// groupesAnterieurs (facultatif) affiche l'exercice précédent en superposition, pour visualiser
+// l'évolution du profil d'un coup d'œil.
+// N'affiche une branche que pour les groupes réellement calculables sur l'exercice analysé
+// (groupes = scoresParGroupe(kpis), qui exclut déjà les groupes sans aucun KPI calculable) : un
+// groupe absent (ex. "Délais de paiement" si aucun des 3 KPI n'a pu être calculé) ne doit PAS
+// apparaître comme une branche à 0 — ce serait lu comme "mauvais score" alors que c'est juste
+// "pas de donnée", ce qui fausse la lecture visuelle du profil.
+const TOUS_GROUPES_RADAR = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement', 'Stocks'];
 export function htmlRadarGroupes(id) {
   return `<canvas id="${id}" height="260"></canvas>`;
 }
 export function montrerRadarGroupes(id, groupes, groupesAnterieurs, labelAnterieur) {
-  const labels = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement'];
+  const labels = TOUS_GROUPES_RADAR.filter(g => groupes && groupes[g] !== undefined);
+  if (labels.length === 0) return; // aucun groupe calculable : pas de radar à dessiner
   const datasets = [{
     label: 'Exercice analysé',
-    data: labels.map(g => groupes[g] ?? 0),
+    data: labels.map(g => groupes[g]),
     borderColor: '#316A6C', backgroundColor: 'rgba(49,106,108,0.25)',
     pointBackgroundColor: '#316A6C', borderWidth: 2,
   }];
