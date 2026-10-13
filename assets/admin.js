@@ -20,7 +20,7 @@ import { RUBRIQUES, GROUPES_MAPPING, mappingParDefaut, parseRangesInput, formatR
 import { nombreMoisEntre, periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
 import { parseBnbOfficiel } from "./bnb-officiel.js";
 import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
-import { detailKpi } from "./tracabilite.js";
+import { detailKpi, estExerciceMargeBrute } from "./tracabilite.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -980,7 +980,7 @@ function renderBnbContent() {
   const ecart = Math.round((t.totalActif || 0) - (t.totalPassif || 0));
   const equilibre = Math.abs(ecart) < 1;
   const sourceLabel = LABEL_SOURCE_IMPORT[exercice.typeImport] || 'Bilan BNB';
-  const estMargeBrute = !!exercice.chiffreAffairesEstMargeBrute;
+  const estMargeBrute = estExerciceMargeBrute(exercice);
 
   const entete = `<p class="panel-sub" style="margin:-4px 0 18px;">
       Période : <strong>${escapeHtml(labelPeriode(exercice))}</strong>
@@ -1032,7 +1032,7 @@ function renderKpiContent() {
   const tauxTVA = (typeof societeChoisie?.tauxTVA === 'number') ? societeChoisie.tauxTVA : 0.21;
 
   const periode = periodeDe(exercice);
-  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, !!exercice.chiffreAffairesEstMargeBrute);
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, estExerciceMargeBrute(exercice));
 
   kpiExportCourant = {
     nomSociete: societeChoisie?.nom || '',
@@ -1044,7 +1044,7 @@ function renderKpiContent() {
   // Historique par KPI (tous les exercices importés, pour la sparkline), aligné sur l'ordre chronologique.
   const historiquesParCode = {};
   kpiExercicesCache.forEach(ex => {
-    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, !!ex.chiffreAffairesEstMargeBrute);
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, estExerciceMargeBrute(ex));
     kpisEx.forEach(k => {
       if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
       historiquesParCode[k.code].push({ label: labelCourtPeriode(ex), value: k.valeur });
@@ -1056,7 +1056,7 @@ function renderKpiContent() {
   const indexExercice = kpiExercicesCache.findIndex(ex => ex.id === exercice.id);
   const exerciceAnterieur = indexExercice > 0 ? kpiExercicesCache[indexExercice - 1] : null;
   const kpisAnterieurs = exerciceAnterieur
-    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, !!exerciceAnterieur.chiffreAffairesEstMargeBrute)
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, estExerciceMargeBrute(exerciceAnterieur))
     : null;
   const scoreGlobal = calculerScoreGlobal(kpis);
   const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);

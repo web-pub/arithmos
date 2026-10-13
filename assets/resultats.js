@@ -13,7 +13,7 @@ import {
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
 import { periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
 import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
-import { detailKpi } from "./tracabilite.js";
+import { detailKpi, estExerciceMargeBrute } from "./tracabilite.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -111,7 +111,7 @@ function renderContent() {
   const tauxTVA = (typeof societeChoisie?.tauxTVA === 'number') ? societeChoisie.tauxTVA : 0.21;
 
   const periode = periodeDe(exercice);
-  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, !!exercice.chiffreAffairesEstMargeBrute);
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, estExerciceMargeBrute(exercice));
 
   kpiExportCourant = {
     nomSociete: societeChoisie?.nom || '',
@@ -122,7 +122,7 @@ function renderContent() {
 
   const historiquesParCode = {};
   exercicesCache.forEach(ex => {
-    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, !!ex.chiffreAffairesEstMargeBrute);
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, estExerciceMargeBrute(ex));
     kpisEx.forEach(k => {
       if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
       historiquesParCode[k.code].push({ label: labelCourtPeriode(ex), value: k.valeur });
@@ -132,7 +132,7 @@ function renderContent() {
   const indexExercice = exercicesCache.findIndex(ex => ex.id === exercice.id);
   const exerciceAnterieur = indexExercice > 0 ? exercicesCache[indexExercice - 1] : null;
   const kpisAnterieurs = exerciceAnterieur
-    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, !!exerciceAnterieur.chiffreAffairesEstMargeBrute)
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, estExerciceMargeBrute(exerciceAnterieur))
     : null;
   const scoreGlobal = calculerScoreGlobal(kpis);
   const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);

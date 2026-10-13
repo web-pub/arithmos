@@ -11,6 +11,24 @@
 
 import { RUBRIQUES } from "./mapping.js";
 
+// Détecte si un exercice relève du cas "marge brute" (dépôt officiel BNB sans chiffre d'affaires
+// séparé, code 70 absent, seule une marge brute globale code 9900 a été communiquée) — voir
+// bnb-officiel.js et kpi.js (paramètre estMargeBrute) pour le détail de ce que ça implique.
+// Les imports à partir de la V13-010 stockent ce champ explicitement sur l'exercice
+// (chiffreAffairesEstMargeBrute, booléen). Pour les exercices importés AVANT ce correctif, ce champ
+// n'existe pas : on déduit alors la situation à partir de sa signature caractéristique — en mode
+// marge brute, bnb-officiel.js force achats et services à 0 alors qu'un montant non nul figure
+// dans "chiffre d'affaires" (qui est en réalité la marge). Un vrai zéro simultané sur achats ET
+// services, combiné à un CA non nul, est en pratique quasi inexistant pour une société réelle, donc
+// ce repli est fiable sans avoir besoin de réimporter les anciens exercices.
+export function estExerciceMargeBrute(exercice) {
+  if (!exercice) return false;
+  if (typeof exercice.chiffreAffairesEstMargeBrute === 'boolean') return exercice.chiffreAffairesEstMargeBrute;
+  if (exercice.typeImport !== 'bnb_officiel') return false;
+  const v = exercice.valeurs || {};
+  return (v.achats || 0) === 0 && (v.servicesBiensDivers || 0) === 0 && (v.chiffreAffaires || 0) !== 0;
+}
+
 // code KPI (kpi.js) -> liste de composantes { cle, signe, role }.
 // "role" sert uniquement à grouper l'affichage (numérateur / dénominateur / terme) ; le signe
 // porte la contribution réelle de la rubrique dans le résultat final du KPI.
