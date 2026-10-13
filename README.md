@@ -1,4 +1,9 @@
-# Arithmos — V13-010
+# Arithmos — V13-011
+
+## Correctif V13-011 : la correction marge brute (V13-010) ne s'appliquait pas aux exercices déjà importés
+Signalé sur un exercice réel : le badge "À surveiller" du délai de paiement clients affichait encore une valeur chiffrée (146 jours) calculée à partir de la marge brute, et l'onglet Chiffres BNB affichait encore "Chiffre d'affaires" en toutes lettres — alors que ce dépôt ne précise ni CA ni achats. Cause : le nouveau champ `chiffreAffairesEstMargeBrute` (V13-010) n'existe que sur les imports faits **après** ce correctif ; sur les exercices déjà en base, il est absent, donc la détection retombait par défaut sur "non marge brute" et l'ancien comportement (fausser le calcul) continuait de s'afficher.
+- La détection repose désormais aussi sur la **signature caractéristique** du mode marge brute (achats et services à 0 alors qu'un montant de "chiffre d'affaires" non nul est présent, uniquement pour les dépôts officiels BNB) quand le champ n'existe pas — ça corrige automatiquement tous les exercices déjà importés, sans avoir besoin de les réimporter.
+- Conséquence directe : les KPI concernés (marge nette, marge d'exploitation, les 3 KPI "Délais de paiement") repassent bien en "Non calculable" (badge neutre, pas de couleur ni de texte alarmant) sur ces exercices, et l'onglet Chiffres BNB affiche bien "Marge brute (CA non précisé)" avec l'encart d'avertissement.
 
 ## Correctif V13-010 : marge brute confondue avec le chiffre d'affaires, et lisibilité du détail des KPI
 Correction demandée sur 2 points distincts (dépôt officiel BNB) :
