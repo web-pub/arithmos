@@ -1,4 +1,14 @@
-# Arithmos — V13-013
+# Arithmos — V13-015
+
+## Nouveau + correctif V13-015 : tableau de bord cliquable, et ses chiffres "Accès"/"Exercices" étaient faux
+- **Tuiles cliquables** : chaque tuile du tableau de bord (Sociétés, Accès résultats actifs, Exercices importés) mène maintenant directement à l'onglet correspondant d'un clic — plus besoin de chercher le bon onglet dans le menu.
+- **Nouvelle tuile "Sociétés avec KPI disponibles"**, qui mène à l'onglet KPI.
+- **Correctif des chiffres faux** : "Accès résultats actifs" affichait 0 tant que l'onglet Accès n'avait jamais été ouvert dans la session (le chiffre dépendait d'une liste chargée seulement à ce moment-là) ; "Exercices importés" pouvait aussi retomber sur 0 en cas d'imprévu sur la requête d'ensemble utilisée pour le compter. Les deux chiffres sont maintenant interrogés directement dans Firestore à chaque affichage du tableau de bord, indépendamment des autres onglets déjà ouverts ou non — et en cas d'échec réel de la requête, affiche "—" (donnée indisponible) plutôt qu'un 0 qui laisserait croire à tort qu'il n'y a rien.
+- **Séparateur de milliers sur les compteurs du tableau de bord**, pour rester cohérent avec le reste du site (espace tous les 3 chiffres) une fois les chiffres plus élevés.
+
+## Correctif V13-014 : 2 bugs d'affichage signalés sur les courbes des KPI
+- **Courbe "Écart délais clients / fournisseurs" en rouge alors que le résultat est bon.** La couleur rouge/vert des courbes est basée sur le signe des valeurs (négatif = rouge), une règle valable pour la plupart des KPI (trésorerie, marge, résultat — négatif y est toujours défavorable). Mais pour ce KPI précis, c'est l'inverse : négatif = favorable (les clients paient avant que les fournisseurs doivent être réglés), positif = défavorable. La courbe utilisait donc la mauvaise règle, affichant un bon résultat (-11 jours, badge "Bon") en rouge. Corrigé en inversant la règle de couleur spécifiquement pour ce KPI (et, par cohérence, un écart positif et défavorable s'affichera désormais bien en rouge).
+- **Courbe "Vitesse de rotation des stocks" en euros au lieu de jours.** La liste des KPI en jours (pour l'axe et l'info-bulle de la courbe) n'avait pas été mise à jour lors de l'ajout de ce nouveau KPI (V13-012) et retombait sur le format € par défaut. Corrigé.
 
 ## Correctif V13-013 : le radar "Profil global" affichait une branche à 0 pour un groupe non calculable
 Signalé sur le radar "Profil global" : quand aucun des KPI d'un groupe n'est calculable pour l'exercice (ex. aucun des 3 KPI "Délais de paiement"), ce groupe n'a pas de score — mais le radar l'affichait quand même comme une branche tirée jusqu'au centre (valeur 0), ce qui se lit visuellement comme "mauvais score" alors que c'est en réalité "pas de donnée disponible", déformant tout le profil.

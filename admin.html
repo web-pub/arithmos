@@ -20,7 +20,7 @@
     </a>
     <div class="admin-title-block">
       <div class="site-title">Arithmos</div>
-      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V13-013</span>
+      <span class="role-badge" id="role-badge">—</span><span class="admin-version">V13-015</span>
     </div>
   </div>
   <div class="admin-user">
@@ -48,9 +48,10 @@
     <h2>Tableau de bord</h2>
     <p class="panel-sub">Vue d'ensemble de l'espace Arithmos.</p>
     <div class="stat-row">
-      <div class="stat-tile"><div class="num" id="stat-societes">–</div><div class="label">Sociétés</div></div>
-      <div class="stat-tile"><div class="num" id="stat-acces">–</div><div class="label">Accès résultats actifs</div></div>
-      <div class="stat-tile"><div class="num" id="stat-bilans">–</div><div class="label">Exercices importés</div></div>
+      <button type="button" class="stat-tile clickable" data-tab="societes"><div class="num" id="stat-societes">–</div><div class="label">Sociétés</div></button>
+      <button type="button" class="stat-tile clickable" data-tab="acces"><div class="num" id="stat-acces">–</div><div class="label">Accès résultats actifs</div></button>
+      <button type="button" class="stat-tile clickable" data-tab="comptes"><div class="num" id="stat-bilans">–</div><div class="label">Exercices importés</div></button>
+      <button type="button" class="stat-tile clickable" data-tab="kpi"><div class="num" id="stat-kpi">–</div><div class="label">Sociétés avec KPI disponibles</div></button>
     </div>
   </section>
 
