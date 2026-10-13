@@ -66,6 +66,7 @@ export function renderSparkline(points, opts = {}) {
 function formatShort(n, format) {
   if (format === 'pct') return (n * 100).toLocaleString('fr-BE', { maximumFractionDigits: 1 }) + ' %';
   if (format === 'ratio') return n.toLocaleString('fr-BE', { maximumFractionDigits: 2 });
+  if (format === 'jours') return Math.round(n).toLocaleString('fr-BE') + ' j';
   return Math.round(n).toLocaleString('fr-BE') + ' €';
 }
 
@@ -91,11 +92,13 @@ function montage(id, config) {
   return chart;
 }
 
+// Même format que partout ailleurs dans Arithmos (kpi.js eur(), admin.js formatEUR...) :
+// séparateur de milliers = espace (ex. -1 516 695 €), jamais d'abréviation "k €".
 function formatAxe(n, format) {
-  if (format === 'pct') return Math.round(n * 100) + ' %';
-  if (format === 'ratio') return n.toLocaleString('fr-BE', { maximumFractionDigits: 1 });
-  if (Math.abs(n) >= 1000) return Math.round(n / 1000) + 'k €';
-  return Math.round(n) + ' €';
+  if (format === 'pct') return (n * 100).toLocaleString('fr-BE', { maximumFractionDigits: 1 }) + ' %';
+  if (format === 'ratio') return n.toLocaleString('fr-BE', { maximumFractionDigits: 2 });
+  if (format === 'jours') return Math.round(n).toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' j';
+  return Math.round(n).toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €';
 }
 
 // Courbe d'évolution agrandie d'un seul KPI (remplace la sparkline pour les KPI ayant au moins
@@ -169,7 +172,7 @@ export function htmlRadarGroupes(id) {
   return `<canvas id="${id}" height="260"></canvas>`;
 }
 export function montrerRadarGroupes(id, groupes, groupesAnterieurs, labelAnterieur) {
-  const labels = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie'];
+  const labels = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement'];
   const datasets = [{
     label: 'Exercice analysé',
     data: labels.map(g => groupes[g] ?? 0),

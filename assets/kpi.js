@@ -20,6 +20,17 @@ function eur(n) {
   if (n === null || n === undefined) return '—';
   return Math.round(n).toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €';
 }
+function jours(n) {
+  if (n === null || n === undefined) return '—';
+  return Math.round(n).toLocaleString('fr-BE') + ' jours';
+}
+
+// Division en jours : renvoie null (plutôt que 0, piège classique avec "null * x") si le ratio
+// sous-jacent n'est pas calculable (dénominateur nul/absent).
+function diviseEnJours(numerateur, denominateur, dureeJours) {
+  const r = div(numerateur, denominateur);
+  return r === null ? null : r * dureeJours;
+}
 
 // Agrégats intermédiaires non stockés tels quels dans Firestore, recalculés à la volée.
 function agregats(v, t) {
@@ -55,6 +66,14 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
 
   const cashFlow = (t.resultatExercice || 0) + (v.amortissements || 0);
   const tresorerieNette = (v.valeursDisponibles || 0) + (v.placementsTresorerie || 0) - (v.dettesFinancieresCT || 0);
+
+  // Délais de paiement, exprimés en jours. "dureeJours" adapte le calcul à la durée réelle de
+  // l'exercice (365 jours pour un exercice de 12 mois, proportionnellement moins pour une période
+  // plus courte) — sinon un exercice de 6 mois afficherait un délai deux fois trop long.
+  const dureeJours = 365 * ((nombreMois || 12) / 12);
+  const delaiClients = diviseEnJours(v.creancesCT || 0, v.chiffreAffaires || 0, dureeJours);
+  const delaiFournisseurs = diviseEnJours(v.dettesCommercialesCT || 0, (v.achats || 0) + (v.servicesBiensDivers || 0), dureeJours);
+  const ecartDelais = (delaiClients !== null && delaiFournisseurs !== null) ? delaiClients - delaiFournisseurs : null;
 
   function kpi(code, label, groupe, valeur, format, seuils, analyse, parMois) {
     let statut = 'neutre';
@@ -143,7 +162,28 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
       (val, st) => val === null ? "Pas assez de données pour ce calcul." :
         val >= 0 ? `La trésorerie disponible (${eur(val)}) couvre les dettes financières à court terme.` :
         `Les dettes financières à court terme dépassent la trésorerie disponible (écart de ${eur(Math.abs(val))}) : point de vigilance.`),
+
+    kpi('delai_clients', 'Délai de paiement clients', 'Délais de paiement', delaiClients, jours,
+      { sens: 'bas', bon: 30, correct: 60 },
+      (val, st) => val === null ? "Pas assez de données pour ce ratio (chiffre d'affaires manquant ou nul)." :
+        st === 'bon' ? `Les clients paient en moyenne sous ${jours(val)} : un délai de recouvrement rapide, favorable à la trésorerie.` :
+        st === 'correct' ? `Les clients paient en moyenne en ${jours(val)} : un délai correct, à surveiller pour qu'il ne s'allonge pas.` :
+        `Les clients paient en moyenne en ${jours(val)} : un délai de recouvrement long, qui immobilise de la trésorerie.`),
+
+    kpi('delai_fournisseurs', 'Délai de paiement fournisseurs', 'Délais de paiement', delaiFournisseurs, jours,
+      { sens: 'bas', bon: 60, correct: 90 },
+      (val, st) => val === null ? "Pas assez de données pour ce ratio (achats et services manquants ou nuls)." :
+        st === 'bon' ? `Les fournisseurs sont payés en moyenne sous ${jours(val)} : un délai dans la norme des usages commerciaux belges.` :
+        st === 'correct' ? `Les fournisseurs sont payés en moyenne en ${jours(val)} : un délai déjà long, à surveiller.` :
+        `Les fournisseurs sont payés en moyenne en ${jours(val)} : un délai inhabituellement long, qui peut signaler une tension de trésorerie ou des tensions avec les fournisseurs.`),
+
+    kpi('ecart_delais', 'Écart délais clients / fournisseurs', 'Délais de paiement', ecartDelais, jours,
+      { sens: 'bas', bon: 0, correct: 30 },
+      (val, st) => val === null ? "Pas assez de données pour comparer les deux délais (il faut un délai clients et un délai fournisseurs calculables)." :
+        val <= 0 ? `Les clients paient en moyenne ${jours(Math.abs(val))} avant l'échéance moyenne des fournisseurs : un cycle favorable, les ventes financent les achats.` :
+        st === 'correct' ? `Les clients paient en moyenne ${jours(val)} après que les fournisseurs doivent être réglés : un écart à surveiller, qui crée un besoin de financement à court terme.` :
+        `Les clients paient en moyenne ${jours(val)} après que les fournisseurs doivent être réglés : un écart important — la société doit financer ce décalage (trésorerie ou crédit court terme).`),
   ];
 }
 
-export const GROUPES_KPI = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie'];
+export const GROUPES_KPI = ['Liquidité', 'Solvabilité', 'Rentabilité', 'Trésorerie', 'Délais de paiement'];

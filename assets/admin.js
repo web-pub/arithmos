@@ -20,6 +20,7 @@ import { RUBRIQUES, GROUPES_MAPPING, mappingParDefaut, parseRangesInput, formatR
 import { nombreMoisEntre, periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
 import { parseBnbOfficiel } from "./bnb-officiel.js";
 import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
+import { detailKpi } from "./tracabilite.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -83,6 +84,7 @@ document.querySelectorAll('#admin-tabs button').forEach(btn => {
     if (btn.dataset.tab === 'passwords') loadPasswordsPanel();
     if (btn.dataset.tab === 'comptes') loadExercices();
     if (btn.dataset.tab === 'kpi') loadKpiSociete();
+    if (btn.dataset.tab === 'bnb') loadBnbSociete();
     if (btn.dataset.tab === 'contenu') loadContenu();
     if (btn.dataset.tab === 'maintenance') loadConnexions();
   });
@@ -146,13 +148,17 @@ function populateSocietesSelects() {
   const compteSelect = document.getElementById('comptes-societe-select');
   const exerciceSelect = document.getElementById('exercice-societe');
   const kpiSelect = document.getElementById('kpi-societe-select');
+  const bnbSelect = document.getElementById('bnb-societe-select');
   const prevValue = compteSelect.value;
   const prevKpiValue = kpiSelect.value;
+  const prevBnbValue = bnbSelect.value;
   compteSelect.innerHTML = options;
   exerciceSelect.innerHTML = options;
   kpiSelect.innerHTML = options;
+  bnbSelect.innerHTML = options;
   if (societesCache.some(s => s.id === prevValue)) compteSelect.value = prevValue;
   if (societesCache.some(s => s.id === prevKpiValue)) kpiSelect.value = prevKpiValue;
+  if (societesCache.some(s => s.id === prevBnbValue)) bnbSelect.value = prevBnbValue;
 }
 
 const STATUTS_LEGAUX = {
@@ -895,6 +901,108 @@ async function loadKpiSociete() {
 document.getElementById('kpi-societe-select').addEventListener('change', loadKpiSociete);
 document.getElementById('kpi-exercice-select').addEventListener('change', renderKpiContent);
 
+// ---------- Chiffres BNB (lecture des montants bruts, sans ratio) ----------
+
+let bnbExercicesCache = []; // exercices (triés par date de fin) de la société actuellement affichée dans cet onglet
+
+async function loadBnbSociete() {
+  const societeId = document.getElementById('bnb-societe-select').value;
+  const content = document.getElementById('bnb-content');
+  const exerciceSelect = document.getElementById('bnb-exercice-select');
+
+  if (!societeId) {
+    content.innerHTML = '<div class="empty-state">Crée d\'abord une société.</div>';
+    exerciceSelect.innerHTML = '';
+    return;
+  }
+
+  const snap = await getDocs(collection(db, 'societes', societeId, 'exercices'));
+  bnbExercicesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => periodeDe(a).dateFin.localeCompare(periodeDe(b).dateFin));
+
+  if (bnbExercicesCache.length === 0) {
+    exerciceSelect.innerHTML = '';
+    content.innerHTML = `<div class="kpi-empty-exercice">Aucun exercice importé pour cette société. Importe un exercice depuis l'onglet <strong>Comptes annuels</strong>.</div>`;
+    return;
+  }
+
+  exerciceSelect.innerHTML = bnbExercicesCache
+    .slice().reverse()
+    .map(ex => `<option value="${ex.id}">${escapeHtml(labelPeriode(ex))}</option>`).join('');
+
+  renderBnbContent();
+}
+
+document.getElementById('bnb-societe-select').addEventListener('change', loadBnbSociete);
+document.getElementById('bnb-exercice-select').addEventListener('change', renderBnbContent);
+
+const LABEL_SOURCE_IMPORT = { detaillee: 'Balance détaillée', bnb_officiel: 'Dépôt officiel BNB' };
+
+// Table d'une colonne (Actif / Passif / Produits / Charges) : une ligne par rubrique du groupe
+// demandé (valeurs non nulles uniquement, dans l'ordre de RUBRIQUES), plus une ligne Total en gras.
+function htmlColonneBnb(titre, groupe, valeurs, totalLabel, total) {
+  const lignes = RUBRIQUES.filter(r => r.groupe === groupe)
+    .map(r => ({ label: r.label, montant: valeurs[r.key] || 0 }))
+    .filter(l => l.montant !== 0)
+    .map(l => `<tr><td>${escapeHtml(l.label)}</td><td style="text-align:right;">${formatEUR(l.montant)}</td></tr>`)
+    .join('');
+  return `
+    <div class="bnb-col">
+      <h4>${escapeHtml(titre)}</h4>
+      <table class="data-table">
+        <tbody>
+          ${lignes || '<tr><td colspan="2" style="color:var(--ink-soft);">Aucun montant</td></tr>'}
+          <tr class="bnb-total-row"><td>${escapeHtml(totalLabel)}</td><td style="text-align:right;">${formatEUR(total)}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderBnbContent() {
+  const content = document.getElementById('bnb-content');
+  const exerciceId = document.getElementById('bnb-exercice-select').value;
+  const exercice = bnbExercicesCache.find(ex => ex.id === exerciceId) || bnbExercicesCache[bnbExercicesCache.length - 1];
+  if (!exercice) { content.innerHTML = ''; return; }
+
+  const v = exercice.valeurs || {};
+  const t = exercice.totaux || {};
+  const ecart = Math.round((t.totalActif || 0) - (t.totalPassif || 0));
+  const equilibre = Math.abs(ecart) < 1;
+  const sourceLabel = LABEL_SOURCE_IMPORT[exercice.typeImport] || 'Bilan BNB';
+
+  const entete = `<p class="panel-sub" style="margin:-4px 0 18px;">
+      Période : <strong>${escapeHtml(labelPeriode(exercice))}</strong>
+      &nbsp;·&nbsp; Source : <strong>${escapeHtml(sourceLabel)}</strong>
+      &nbsp;·&nbsp; ${equilibre ? '✓ Bilan équilibré' : `⚠ Écart actif/passif : ${formatEUR(ecart)}`}
+    </p>`;
+
+  const bilan = `
+    <h3 class="kpi-group-title">Bilan</h3>
+    <div class="bnb-grid">
+      ${htmlColonneBnb('Actif', 'Bilan — Actif', v, 'TOTAL ACTIF', t.totalActif)}
+      ${htmlColonneBnb('Passif', 'Bilan — Passif', v, 'TOTAL PASSIF', t.totalPassif)}
+    </div>`;
+
+  const compteResultats = `
+    <h3 class="kpi-group-title">Compte de résultats</h3>
+    <div class="bnb-grid">
+      ${htmlColonneBnb('Produits', 'Compte de résultats — Produits', v,
+        'TOTAL PRODUITS', (v.chiffreAffaires || 0) + (v.variationStocks || 0) + (v.autresProduitsExploitation || 0) + (v.produitsFinanciers || 0) + (v.produitsExceptionnels || 0))}
+      ${htmlColonneBnb('Charges', 'Compte de résultats — Charges', v,
+        'TOTAL CHARGES', (v.achats || 0) + (v.servicesBiensDivers || 0) + (v.remunerations || 0) + (v.amortissements || 0) + (v.reductionsValeur || 0) + (v.autresChargesExploitation || 0) + (v.chargesFinancieres || 0) + (v.chargesExceptionnelles || 0) + (v.impots || 0))}
+    </div>`;
+
+  const resultats = `
+    <div class="stat-row" style="margin-top:8px;">
+      <div class="stat-tile"><div class="num">${formatEUR(t.resultatExploitation)}</div><div class="label">Résultat d'exploitation</div></div>
+      <div class="stat-tile"><div class="num">${formatEUR(t.resultatCourant)}</div><div class="label">Résultat courant</div></div>
+      <div class="stat-tile"><div class="num">${formatEUR(t.resultatAvantImpot)}</div><div class="label">Résultat avant impôt</div></div>
+      <div class="stat-tile"><div class="num">${formatEUR(t.resultatExercice)}</div><div class="label">Résultat de l'exercice</div></div>
+    </div>`;
+
+  content.innerHTML = entete + bilan + compteResultats + resultats;
+}
+
 function renderKpiContent() {
   const content = document.getElementById('kpi-content');
   const exerciceId = document.getElementById('kpi-exercice-select').value;
@@ -964,7 +1072,8 @@ function renderKpiContent() {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
-        ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
+        ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' :
+        k.code.includes('delai') || k.code === 'ecart_delais' ? 'jours' : null;
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
       const historique = historiquesParCode[k.code] || [];
       const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
@@ -973,6 +1082,7 @@ function renderKpiContent() {
         ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
         : renderSparkline(historique, { format });
       if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
+      const lignesDetail = detailKpi(k.code, exercice.valeurs, exercice.totaux, exercice.typeImport, societeChoisie?.mappingComptes);
       return `
         <div class="kpi-card">
           <div class="kpi-card-head">
@@ -982,6 +1092,7 @@ function renderKpiContent() {
           <div class="kpi-value">${escapeHtml(k.affichage)}${parMois}</div>
           ${courbeOuSpark}
           <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
+          ${htmlDetailKpi(lignesDetail)}
         </div>`;
     }).join('');
     return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
@@ -1003,13 +1114,53 @@ function renderKpiContent() {
   Object.entries(courbesAMonter).forEach(([id, { historique, format }]) => montrerCourbeKpi(id, historique, { format }));
 }
 
+// Section dépliable "Voir le détail du calcul" : une ligne par rubrique PCMN/BNB impliquée dans
+// le KPI, triée par poids décroissant, pour repérer d'un coup d'œil quel compte pèse le plus
+// (en bien ou en mal) dans le résultat affiché.
+function htmlDetailKpi(lignes) {
+  if (!lignes || lignes.length === 0) return '';
+  const rows = lignes.map(l => `
+    <tr>
+      <td>${escapeHtml(l.label)}</td>
+      <td class="detail-source">${escapeHtml(l.source)}</td>
+      <td class="detail-montant ${l.montant < 0 ? 'neg' : ''}">${l.montant >= 0 ? '+' : ''}${formatEUR(l.montant)}</td>
+    </tr>`).join('');
+  return `
+    <details class="kpi-detail">
+      <summary>Voir le détail du calcul</summary>
+      <table class="kpi-detail-table">
+        <thead><tr><th>Rubrique</th><th>Source (PCMN / BNB)</th><th>Contribution</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
+}
+
 function labelStatut(statut) {
   return { bon: 'Bon', correct: 'Correct', fragile: 'À surveiller', neutre: '—' }[statut] || '—';
 }
 
+// Capture un <canvas> Chart.js déjà affiché à l'écran en image PNG, pour l'insérer dans l'export
+// PDF (voir export.js) — renvoie null si le canvas n'existe pas ou n'a pas pu être capturé (ex.
+// graphique pas encore monté faute de données suffisantes), auquel cas le PDF se passe de l'image.
+function capturerCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  try { return { dataUrl: c.toDataURL('image/png'), w: c.width, h: c.height }; } catch (e) { return null; }
+}
+
 document.getElementById('kpi-export-pdf').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }
-  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
+  const graphiques = {
+    jauge: capturerCanvas('jauge-score-admin'),
+    radar: capturerCanvas('radar-groupes-admin'),
+    barres: kpiExercicesCache.length >= 2 ? capturerCanvas('barres-exercices-admin') : null,
+    courbes: {},
+  };
+  kpiExportCourant.kpis.forEach(k => {
+    const img = capturerCanvas(`kc-admin-${k.code}`);
+    if (img) graphiques.courbes[k.code] = img;
+  });
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante, graphiques);
 });
 document.getElementById('kpi-export-excel').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) { toast("Sélectionne d'abord une société avec un exercice importé.", true); return; }

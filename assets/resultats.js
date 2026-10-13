@@ -13,6 +13,7 @@ import {
 import { exportKpiPdf, exportKpiExcel } from "./export.js";
 import { periodeDe, labelPeriode, labelCourtPeriode } from "./periode.js";
 import { calculerScoreGlobal, detecterSignauxAlerte, renderSanteHtml, scoresParGroupe } from "./sante.js";
+import { detailKpi } from "./tracabilite.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -57,7 +58,7 @@ onAuthStateChanged(auth, async (user) => {
   const societeDocs = await Promise.all(ids.map(id => getDoc(doc(db, 'societes', id))));
   societesAutorisees = societeDocs
     .filter(s => s.exists())
-    .map(s => ({ id: s.id, nom: s.data().nom, statutLegal: s.data().statutLegal }))
+    .map(s => ({ id: s.id, nom: s.data().nom, statutLegal: s.data().statutLegal, mappingComptes: s.data().mappingComptes }))
     .sort((a, b) => a.nom.localeCompare(b.nom));
 
   if (societesAutorisees.length === 0) {
@@ -160,7 +161,8 @@ function renderContent() {
     const kpisDuGroupe = kpis.filter(k => k.groupe === groupe);
     const cards = kpisDuGroupe.map(k => {
       const format = k.code.includes('liquidite') ? 'ratio' :
-        ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' : null;
+        ['solvabilite', 'endettement', 'marge_nette', 'marge_exploitation', 'roe', 'roa'].includes(k.code) ? 'pct' :
+        k.code.includes('delai') || k.code === 'ecart_delais' ? 'jours' : null;
       const parMois = (k.parMois && periode.nombreMois !== 12) ? ` <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(${k.parMois}/mois)</span>` : '';
       const historique = historiquesParCode[k.code] || [];
       const assezDePoints = historique.filter(p => typeof p.value === 'number').length >= 2;
@@ -169,6 +171,7 @@ function renderContent() {
         ? `<div class="chart-card-wrap courte" style="height:110px;">${htmlCourbeKpi(idCourbe)}</div>`
         : renderSparkline(historique, { format });
       if (assezDePoints) courbesAMonter[idCourbe] = { historique, format };
+      const lignesDetail = detailKpi(k.code, exercice.valeurs, exercice.totaux, exercice.typeImport, societeChoisie?.mappingComptes);
       return `
         <div class="kpi-card">
           <div class="kpi-card-head">
@@ -178,6 +181,7 @@ function renderContent() {
           <div class="kpi-value">${escapeHtml(k.affichage)}${parMois}</div>
           ${courbeOuSpark}
           <p class="kpi-analyse">${escapeHtml(k.analyse)}</p>
+          ${htmlDetailKpi(lignesDetail)}
         </div>`;
     }).join('');
     return `<h3 class="kpi-group-title">${escapeHtml(groupe)}</h3><div class="kpi-grid">${cards}</div>`;
@@ -201,9 +205,52 @@ function labelStatut(statut) {
   return { bon: 'Bon', correct: 'Correct', fragile: 'À surveiller', neutre: '—' }[statut] || '—';
 }
 
+function formatEUR(n) {
+  if (typeof n !== 'number') return '—';
+  return n.toLocaleString('fr-BE', { maximumFractionDigits: 0 }) + ' €';
+}
+
+// Section dépliable "Voir le détail du calcul" : une ligne par rubrique PCMN/BNB impliquée dans
+// le KPI, triée par poids décroissant (voir admin.js pour la version jumelle de cette fonction).
+function htmlDetailKpi(lignes) {
+  if (!lignes || lignes.length === 0) return '';
+  const rows = lignes.map(l => `
+    <tr>
+      <td>${escapeHtml(l.label)}</td>
+      <td class="detail-source">${escapeHtml(l.source)}</td>
+      <td class="detail-montant ${l.montant < 0 ? 'neg' : ''}">${l.montant >= 0 ? '+' : ''}${formatEUR(l.montant)}</td>
+    </tr>`).join('');
+  return `
+    <details class="kpi-detail">
+      <summary>Voir le détail du calcul</summary>
+      <table class="kpi-detail-table">
+        <thead><tr><th>Rubrique</th><th>Source (PCMN / BNB)</th><th>Contribution</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
+}
+
+// Capture un <canvas> Chart.js déjà affiché à l'écran en image PNG, pour l'insérer dans l'export
+// PDF (voir export.js, version jumelle de cette fonction dans admin.js).
+function capturerCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  try { return { dataUrl: c.toDataURL('image/png'), w: c.width, h: c.height }; } catch (e) { return null; }
+}
+
 document.getElementById('resultats-export-pdf').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) return;
-  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante);
+  const graphiques = {
+    jauge: capturerCanvas('jauge-score-resultats'),
+    radar: capturerCanvas('radar-groupes-resultats'),
+    barres: exercicesCache.length >= 2 ? capturerCanvas('barres-exercices-resultats') : null,
+    courbes: {},
+  };
+  kpiExportCourant.kpis.forEach(k => {
+    const img = capturerCanvas(`kc-resultats-${k.code}`);
+    if (img) graphiques.courbes[k.code] = img;
+  });
+  exportKpiPdf(kpiExportCourant.nomSociete, kpiExportCourant.periodeLabel, kpiExportCourant.kpis, kpiExportCourant.sante, graphiques);
 });
 document.getElementById('resultats-export-excel').addEventListener('click', () => {
   if (!kpiExportCourant.kpis.length) return;

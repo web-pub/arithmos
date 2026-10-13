@@ -49,7 +49,7 @@ export function calculerScoreGlobal(kpis) {
   const nbCalcules = Object.values(parGroupe).reduce((a, pts) => a + pts.length, 0);
   return {
     score, note, label, affichage: `${note} — ${score}/100`,
-    detail: `Synthèse de ${nbCalcules} indicateur${nbCalcules > 1 ? 's' : ''} calculé${nbCalcules > 1 ? 's' : ''} (liquidité, solvabilité, rentabilité, trésorerie), à seuils comptables usuels pour une PME belge — un indicateur de santé, pas une probabilité statistique de faillite.`,
+    detail: `Synthèse de ${nbCalcules} indicateur${nbCalcules > 1 ? 's' : ''} calculé${nbCalcules > 1 ? 's' : ''} (liquidité, solvabilité, rentabilité, trésorerie, délais de paiement), à seuils comptables usuels pour une PME belge — un indicateur de santé, pas une probabilité statistique de faillite.`,
   };
 }
 
@@ -107,6 +107,10 @@ export function detecterSignauxAlerte(valeurs, totaux, kpis, kpisAnterieurs, sta
   const liquiditeGenerale = parCode['liquidite_generale'];
   if (liquiditeGenerale && liquiditeGenerale.statut === 'fragile') {
     ajoute('attention', "Liquidité générale fragile : les actifs à court terme ne couvrent pas les dettes à court terme.");
+  }
+  const ecartDelais = parCode['ecart_delais'];
+  if (ecartDelais && ecartDelais.statut === 'fragile') {
+    ajoute('attention', "Écart important entre le délai de paiement des clients et celui des fournisseurs : la société doit financer ce décalage sur ses fonds propres ou par du crédit court terme.");
   }
 
   // Dégradation nette d'un KPI clé par rapport à l'exercice précédent (bon/correct -> fragile).
