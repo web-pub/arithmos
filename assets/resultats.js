@@ -58,7 +58,7 @@ onAuthStateChanged(auth, async (user) => {
   const societeDocs = await Promise.all(ids.map(id => getDoc(doc(db, 'societes', id))));
   societesAutorisees = societeDocs
     .filter(s => s.exists())
-    .map(s => ({ id: s.id, nom: s.data().nom, statutLegal: s.data().statutLegal, mappingComptes: s.data().mappingComptes }))
+    .map(s => ({ id: s.id, nom: s.data().nom, statutLegal: s.data().statutLegal, mappingComptes: s.data().mappingComptes, tauxTVA: s.data().tauxTVA }))
     .sort((a, b) => a.nom.localeCompare(b.nom));
 
   if (societesAutorisees.length === 0) {
@@ -104,11 +104,15 @@ function renderContent() {
   const exercice = exercicesCache.find(ex => ex.id === exerciceId) || exercicesCache[exercicesCache.length - 1];
   if (!exercice) { content.innerHTML = ''; return; }
 
-  const periode = periodeDe(exercice);
-  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois);
-
   const societeId = document.getElementById('resultats-societe-select').value;
   const societeChoisie = societesAutorisees.find(s => s.id === societeId);
+  // Voir admin.js (version jumelle) : corrige le décalage TVAC (créances/dettes commerciales) vs
+  // HTVA (CA/achats) dans les 2 délais de paiement.
+  const tauxTVA = (typeof societeChoisie?.tauxTVA === 'number') ? societeChoisie.tauxTVA : 0.21;
+
+  const periode = periodeDe(exercice);
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, !!exercice.chiffreAffairesEstMargeBrute);
+
   kpiExportCourant = {
     nomSociete: societeChoisie?.nom || '',
     periodeLabel: labelPeriode(exercice),
@@ -118,7 +122,7 @@ function renderContent() {
 
   const historiquesParCode = {};
   exercicesCache.forEach(ex => {
-    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois);
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, !!ex.chiffreAffairesEstMargeBrute);
     kpisEx.forEach(k => {
       if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
       historiquesParCode[k.code].push({ label: labelCourtPeriode(ex), value: k.valeur });
@@ -128,7 +132,7 @@ function renderContent() {
   const indexExercice = exercicesCache.findIndex(ex => ex.id === exercice.id);
   const exerciceAnterieur = indexExercice > 0 ? exercicesCache[indexExercice - 1] : null;
   const kpisAnterieurs = exerciceAnterieur
-    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois)
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, !!exerciceAnterieur.chiffreAffairesEstMargeBrute)
     : null;
   const scoreGlobal = calculerScoreGlobal(kpis);
   const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);
@@ -216,15 +220,17 @@ function htmlDetailKpi(lignes) {
   if (!lignes || lignes.length === 0) return '';
   const rows = lignes.map(l => `
     <tr>
-      <td>${escapeHtml(l.label)}</td>
-      <td class="detail-source">${escapeHtml(l.source)}</td>
+      <td>
+        <div class="detail-label">${escapeHtml(l.label)}</div>
+        <div class="detail-source">${escapeHtml(l.source)}</div>
+      </td>
       <td class="detail-montant ${l.montant < 0 ? 'neg' : ''}">${l.montant >= 0 ? '+' : ''}${formatEUR(l.montant)}</td>
     </tr>`).join('');
   return `
     <details class="kpi-detail">
       <summary>Voir le détail du calcul</summary>
       <table class="kpi-detail-table">
-        <thead><tr><th>Rubrique</th><th>Source (PCMN / BNB)</th><th>Contribution</th></tr></thead>
+        <thead><tr><th>Rubrique</th><th>Contribution</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </details>`;

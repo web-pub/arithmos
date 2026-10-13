@@ -47,7 +47,20 @@ function agregats(v, t) {
 // importés avant la gestion des périodes). Sert uniquement à donner une valeur "par mois" pour
 // le cash-flow (seul KPI en montant € basé sur un flux) — les KPI en % restent comparables
 // tels quels d'une période à l'autre, sans retraitement.
-export function calculerKPI(valeurs, totaux, nombreMois = 12) {
+// tauxTVA : taux de TVA moyen de la société (décimal, ex. 0.21), configuré sur sa fiche
+// (0.21 par défaut). Sert uniquement aux délais de paiement (voir plus bas) : les créances et
+// dettes commerciales (codes BNB 40/41 et 44) sont TVA comprise, alors que le chiffre d'affaires
+// et les achats/services (codes 70, 60, 61) sont hors TVA — sans correction, les deux délais
+// seraient surestimés.
+// estMargeBrute : true quand le dépôt BNB officiel ne précise pas de chiffre d'affaires séparé
+// (code 70 absent) et qu'une marge brute globale (code 9900) a été utilisée à sa place dans
+// "valeurs.chiffreAffaires" pour ne pas perdre le résultat d'exploitation. Cette marge n'est PAS
+// un chiffre d'affaires : elle ne permet pas de reconstituer les achats (une infinité de couples
+// CA/achats donnent la même marge — c'est précisément pour ne pas divulguer ce détail que la
+// société a déposé une marge brute). Tout ratio qui diviserait par ou comparerait au "chiffre
+// d'affaires" serait donc faussé si on le laissait utiliser la marge à sa place : on le force à
+// null (non calculable) plutôt que d'afficher un chiffre trompeur.
+export function calculerKPI(valeurs, totaux, nombreMois = 12, tauxTVA = 0.21, estMargeBrute = false) {
   const v = valeurs || {};
   const t = totaux || {};
   const { actifsCirculants, dettesCT } = agregats(v, t);
@@ -59,8 +72,8 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
   const solvabilite = div(v.capitauxPropres || 0, t.totalActif || 0);
   const tauxEndettement = (solvabilite === null) ? null : 1 - solvabilite;
 
-  const margeNette = div(t.resultatExercice || 0, v.chiffreAffaires || 0);
-  const margeExploitation = div(t.resultatExploitation || 0, v.chiffreAffaires || 0);
+  const margeNette = estMargeBrute ? null : div(t.resultatExercice || 0, v.chiffreAffaires || 0);
+  const margeExploitation = estMargeBrute ? null : div(t.resultatExploitation || 0, v.chiffreAffaires || 0);
   const roe = div(t.resultatExercice || 0, v.capitauxPropres || 0);
   const roa = div(t.resultatExercice || 0, t.totalActif || 0);
 
@@ -70,9 +83,12 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
   // Délais de paiement, exprimés en jours. "dureeJours" adapte le calcul à la durée réelle de
   // l'exercice (365 jours pour un exercice de 12 mois, proportionnellement moins pour une période
   // plus courte) — sinon un exercice de 6 mois afficherait un délai deux fois trop long.
+  // Le CA et les achats/services (dénominateurs) sont ramenés en TVA comprise, au même taux que les
+  // créances/dettes commerciales (numérateurs) — voir note sur tauxTVA ci-dessus.
   const dureeJours = 365 * ((nombreMois || 12) / 12);
-  const delaiClients = diviseEnJours(v.creancesCT || 0, v.chiffreAffaires || 0, dureeJours);
-  const delaiFournisseurs = diviseEnJours(v.dettesCommercialesCT || 0, (v.achats || 0) + (v.servicesBiensDivers || 0), dureeJours);
+  const facteurTVA = 1 + (tauxTVA || 0);
+  const delaiClients = estMargeBrute ? null : diviseEnJours(v.creancesCT || 0, (v.chiffreAffaires || 0) * facteurTVA, dureeJours);
+  const delaiFournisseurs = diviseEnJours(v.dettesCommercialesCT || 0, ((v.achats || 0) + (v.servicesBiensDivers || 0)) * facteurTVA, dureeJours);
   const ecartDelais = (delaiClients !== null && delaiFournisseurs !== null) ? delaiClients - delaiFournisseurs : null;
 
   function kpi(code, label, groupe, valeur, format, seuils, analyse, parMois) {
@@ -128,14 +144,18 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
 
     kpi('marge_nette', 'Marge nette', 'Rentabilité', margeNette, pct,
       { sens: 'haut', bon: 0.05, correct: 0 },
-      (val, st) => val === null ? "Pas assez de données pour ce ratio (chiffre d'affaires manquant ou nul)." :
+      (val, st) => val === null ? (estMargeBrute ?
+          "Non calculable : ce dépôt BNB ne précise pas le chiffre d'affaires (seulement une marge brute globale) — l'utiliser à la place du CA donnerait un ratio faussé." :
+          "Pas assez de données pour ce ratio (chiffre d'affaires manquant ou nul).") :
         st === 'bon' ? `Chaque euro de chiffre d'affaires dégage ${pct(val)} de bénéfice net : une rentabilité confortable.` :
         st === 'correct' ? `La société reste bénéficiaire (marge nette de ${pct(val)}), mais avec une marge de manœuvre réduite.` :
         `La marge nette est négative (${pct(val)}) : l'exercice se solde par une perte.`),
 
     kpi('marge_exploitation', "Marge d'exploitation", 'Rentabilité', margeExploitation, pct,
       { sens: 'haut', bon: 0.08, correct: 0.02 },
-      (val, st) => val === null ? "Pas assez de données pour ce ratio." :
+      (val, st) => val === null ? (estMargeBrute ?
+          "Non calculable : ce dépôt BNB ne précise pas le chiffre d'affaires (seulement une marge brute globale)." :
+          "Pas assez de données pour ce ratio.") :
         `L'activité courante (hors éléments financiers et exceptionnels) dégage une marge d'exploitation de ${pct(val)}.`),
 
     kpi('roe', 'Rentabilité des capitaux propres (ROE)', 'Rentabilité', roe, pct,
@@ -165,17 +185,23 @@ export function calculerKPI(valeurs, totaux, nombreMois = 12) {
 
     kpi('delai_clients', 'Délai de paiement clients', 'Délais de paiement', delaiClients, jours,
       { sens: 'bas', bon: 30, correct: 60 },
-      (val, st) => val === null ? "Pas assez de données pour ce ratio (chiffre d'affaires manquant ou nul)." :
-        st === 'bon' ? `Les clients paient en moyenne sous ${jours(val)} : un délai de recouvrement rapide, favorable à la trésorerie.` :
+      (val, st) => val === null ? (estMargeBrute ?
+          "Non calculable : ce dépôt BNB ne précise pas le chiffre d'affaires (seulement une marge brute globale)." :
+          "Pas assez de données pour ce ratio (chiffre d'affaires manquant ou nul).") :
+        (st === 'bon' ? `Les clients paient en moyenne sous ${jours(val)} : un délai de recouvrement rapide, favorable à la trésorerie.` :
         st === 'correct' ? `Les clients paient en moyenne en ${jours(val)} : un délai correct, à surveiller pour qu'il ne s'allonge pas.` :
-        `Les clients paient en moyenne en ${jours(val)} : un délai de recouvrement long, qui immobilise de la trésorerie.`),
+        `Les clients paient en moyenne en ${jours(val)} : un délai de recouvrement long, qui immobilise de la trésorerie.`)
+        + ` (calculé TVA comprise, à ${pct(tauxTVA)})`),
 
     kpi('delai_fournisseurs', 'Délai de paiement fournisseurs', 'Délais de paiement', delaiFournisseurs, jours,
       { sens: 'bas', bon: 60, correct: 90 },
-      (val, st) => val === null ? "Pas assez de données pour ce ratio (achats et services manquants ou nuls)." :
-        st === 'bon' ? `Les fournisseurs sont payés en moyenne sous ${jours(val)} : un délai dans la norme des usages commerciaux belges.` :
+      (val, st) => val === null ? (estMargeBrute ?
+          "Non calculable : ce dépôt BNB ne précise pas les achats et services (seulement une marge brute globale) — ce montant ne peut pas être reconstitué à partir de la marge seule." :
+          "Pas assez de données pour ce ratio (achats et services manquants ou nuls).") :
+        (st === 'bon' ? `Les fournisseurs sont payés en moyenne sous ${jours(val)} : un délai dans la norme des usages commerciaux belges.` :
         st === 'correct' ? `Les fournisseurs sont payés en moyenne en ${jours(val)} : un délai déjà long, à surveiller.` :
-        `Les fournisseurs sont payés en moyenne en ${jours(val)} : un délai inhabituellement long, qui peut signaler une tension de trésorerie ou des tensions avec les fournisseurs.`),
+        `Les fournisseurs sont payés en moyenne en ${jours(val)} : un délai inhabituellement long, qui peut signaler une tension de trésorerie ou des tensions avec les fournisseurs.`)
+        + ` (calculé TVA comprise, à ${pct(tauxTVA)})`),
 
     kpi('ecart_delais', 'Écart délais clients / fournisseurs', 'Délais de paiement', ecartDelais, jours,
       { sens: 'bas', bon: 0, correct: 30 },

@@ -212,18 +212,19 @@ function labelRubrique(cle) {
   return RUBRIQUES.find(r => r.key === cle)?.label || cle;
 }
 
-// Source affichée pour une rubrique, selon le type d'import de l'exercice.
-// societeMapping = societes/{id}.mappingComptes (utilisé seulement pour 'detaillee').
+// Source affichée pour une rubrique, selon le type d'import de l'exercice — juste les chiffres
+// (le code PCMN/BNB ou la plage de comptes), sans préfixe, pour rester lisible dans un tableau
+// compact.
 export function sourcePourCle(cle, typeImport, societeMapping) {
   if (typeImport === 'detaillee') {
     const rubrique = RUBRIQUES.find(r => r.key === cle);
     const ranges = (societeMapping && societeMapping[cle]) ? societeMapping[cle] : rubrique?.defaut;
-    return ranges ? `Comptes ${formatRangesCourt(ranges)}` : '—';
+    return ranges ? formatRangesCourt(ranges) : '—';
   }
   if (typeImport === 'bnb_officiel') {
-    return `Code BNB ${CODES_BNB_OFFICIEL[cle] || '—'}`;
+    return CODES_BNB_OFFICIEL[cle] || '—';
   }
-  return `Code BNB ${CODES_BNB_ABREGE[cle] || '—'}`;
+  return CODES_BNB_ABREGE[cle] || '—';
 }
 
 function formatRangesCourt(ranges) {

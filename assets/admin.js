@@ -209,6 +209,7 @@ document.getElementById('btn-new-societe').addEventListener('click', () => {
   document.getElementById('form-societe').reset();
   document.getElementById('societe-id').value = '';
   document.getElementById('societe-statut-legal').value = 'normal';
+  document.getElementById('societe-taux-tva').value = '21';
   renderMappingFields(mappingParDefaut());
   openModal('modal-societe');
 });
@@ -222,6 +223,7 @@ function editSociete(id) {
   document.getElementById('societe-forme').value = s.formeJuridique || '';
   document.getElementById('societe-numero').value = s.numeroEntreprise || '';
   document.getElementById('societe-statut-legal').value = s.statutLegal || 'normal';
+  document.getElementById('societe-taux-tva').value = (typeof s.tauxTVA === 'number') ? (s.tauxTVA * 100) : 21;
   renderMappingFields(s.mappingComptes || mappingParDefaut());
   openModal('modal-societe');
 }
@@ -266,6 +268,10 @@ document.getElementById('form-societe').addEventListener('submit', async (e) => 
     formeJuridique: document.getElementById('societe-forme').value.trim(),
     numeroEntreprise: document.getElementById('societe-numero').value.trim(),
     statutLegal: document.getElementById('societe-statut-legal').value,
+    tauxTVA: (() => {
+      const pourcent = parseFloat(document.getElementById('societe-taux-tva').value);
+      return (Number.isFinite(pourcent) && pourcent >= 0) ? pourcent / 100 : 0.21;
+    })(),
     mappingComptes: readMappingFields(),
   };
   try {
@@ -603,8 +609,9 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
     if ((parsed.dateDebutFichier && parsed.dateDebutFichier !== dateDebut) || (parsed.dateFinFichier && parsed.dateFinFichier !== dateFin)) {
       toast(`Le fichier indiquait une autre période — importé sous la période saisie (${dateDebut} → ${dateFin}).`);
     }
-    if (typeImport === 'bnb_officiel' && parsed.chiffreAffairesEstMargeBrute) {
-      toast("Ce dépôt ne précise pas de chiffre d'affaires séparé (option \"marge brute\") : la marge brute a été utilisée à sa place pour les KPI basés sur le CA.");
+    const estMargeBrute = typeImport === 'bnb_officiel' && !!parsed.chiffreAffairesEstMargeBrute;
+    if (estMargeBrute) {
+      toast("Ce dépôt ne précise pas de chiffre d'affaires séparé (option \"marge brute\") : les KPI qui ont besoin du CA ou des achats (marge nette, marge d'exploitation, délais de paiement) seront marqués non calculables plutôt que faussés.");
     }
 
     await setDoc(doc(db, 'societes', societeId, 'exercices', exerciceId), {
@@ -615,6 +622,7 @@ document.getElementById('form-exercice').addEventListener('submit', async (e) =>
       valeurs: parsed.valeurs,
       totaux: parsed.totaux,
       typeImport,
+      chiffreAffairesEstMargeBrute: estMargeBrute,
       dateImport: serverTimestamp(),
       importePar: currentUid,
     });
@@ -940,9 +948,12 @@ const LABEL_SOURCE_IMPORT = { detaillee: 'Balance détaillée', bnb_officiel: 'D
 
 // Table d'une colonne (Actif / Passif / Produits / Charges) : une ligne par rubrique du groupe
 // demandé (valeurs non nulles uniquement, dans l'ordre de RUBRIQUES), plus une ligne Total en gras.
-function htmlColonneBnb(titre, groupe, valeurs, totalLabel, total) {
+function htmlColonneBnb(titre, groupe, valeurs, totalLabel, total, estMargeBrute) {
   const lignes = RUBRIQUES.filter(r => r.groupe === groupe)
-    .map(r => ({ label: r.label, montant: valeurs[r.key] || 0 }))
+    .map(r => ({
+      label: (estMargeBrute && r.key === 'chiffreAffaires') ? "Marge brute (CA non précisé)" : r.label,
+      montant: valeurs[r.key] || 0,
+    }))
     .filter(l => l.montant !== 0)
     .map(l => `<tr><td>${escapeHtml(l.label)}</td><td style="text-align:right;">${formatEUR(l.montant)}</td></tr>`)
     .join('');
@@ -969,27 +980,31 @@ function renderBnbContent() {
   const ecart = Math.round((t.totalActif || 0) - (t.totalPassif || 0));
   const equilibre = Math.abs(ecart) < 1;
   const sourceLabel = LABEL_SOURCE_IMPORT[exercice.typeImport] || 'Bilan BNB';
+  const estMargeBrute = !!exercice.chiffreAffairesEstMargeBrute;
 
   const entete = `<p class="panel-sub" style="margin:-4px 0 18px;">
       Période : <strong>${escapeHtml(labelPeriode(exercice))}</strong>
       &nbsp;·&nbsp; Source : <strong>${escapeHtml(sourceLabel)}</strong>
       &nbsp;·&nbsp; ${equilibre ? '✓ Bilan équilibré' : `⚠ Écart actif/passif : ${formatEUR(ecart)}`}
-    </p>`;
+    </p>` + (estMargeBrute ? `
+    <div class="kpi-card" style="margin:0 0 16px;border-left:3px solid #9a6700;">
+      <p style="margin:0;color:#9a6700;">⚠ Ce dépôt BNB ne précise pas de chiffre d'affaires séparé : la société a opté pour une déclaration en marge brute globale (code 9900), sans détailler achats et chiffre d'affaires. Cette marge brute est affichée ci-dessous à titre informatif, mais elle n'équivaut pas à un chiffre d'affaires — les KPI qui en dépendent (marge nette, marge d'exploitation, délais de paiement) sont marqués non calculables plutôt que faussés.</p>
+    </div>` : '');
 
   const bilan = `
     <h3 class="kpi-group-title">Bilan</h3>
     <div class="bnb-grid">
-      ${htmlColonneBnb('Actif', 'Bilan — Actif', v, 'TOTAL ACTIF', t.totalActif)}
-      ${htmlColonneBnb('Passif', 'Bilan — Passif', v, 'TOTAL PASSIF', t.totalPassif)}
+      ${htmlColonneBnb('Actif', 'Bilan — Actif', v, 'TOTAL ACTIF', t.totalActif, estMargeBrute)}
+      ${htmlColonneBnb('Passif', 'Bilan — Passif', v, 'TOTAL PASSIF', t.totalPassif, estMargeBrute)}
     </div>`;
 
   const compteResultats = `
     <h3 class="kpi-group-title">Compte de résultats</h3>
     <div class="bnb-grid">
       ${htmlColonneBnb('Produits', 'Compte de résultats — Produits', v,
-        'TOTAL PRODUITS', (v.chiffreAffaires || 0) + (v.variationStocks || 0) + (v.autresProduitsExploitation || 0) + (v.produitsFinanciers || 0) + (v.produitsExceptionnels || 0))}
+        'TOTAL PRODUITS', (v.chiffreAffaires || 0) + (v.variationStocks || 0) + (v.autresProduitsExploitation || 0) + (v.produitsFinanciers || 0) + (v.produitsExceptionnels || 0), estMargeBrute)}
       ${htmlColonneBnb('Charges', 'Compte de résultats — Charges', v,
-        'TOTAL CHARGES', (v.achats || 0) + (v.servicesBiensDivers || 0) + (v.remunerations || 0) + (v.amortissements || 0) + (v.reductionsValeur || 0) + (v.autresChargesExploitation || 0) + (v.chargesFinancieres || 0) + (v.chargesExceptionnelles || 0) + (v.impots || 0))}
+        'TOTAL CHARGES', (v.achats || 0) + (v.servicesBiensDivers || 0) + (v.remunerations || 0) + (v.amortissements || 0) + (v.reductionsValeur || 0) + (v.autresChargesExploitation || 0) + (v.chargesFinancieres || 0) + (v.chargesExceptionnelles || 0) + (v.impots || 0), estMargeBrute)}
     </div>`;
 
   const resultats = `
@@ -1009,11 +1024,16 @@ function renderKpiContent() {
   const exercice = kpiExercicesCache.find(ex => ex.id === exerciceId) || kpiExercicesCache[kpiExercicesCache.length - 1];
   if (!exercice) { content.innerHTML = ''; return; }
 
-  const periode = periodeDe(exercice);
-  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois);
-
   const societeId = document.getElementById('kpi-societe-select').value;
   const societeChoisie = societesCache.find(s => s.id === societeId);
+  // Taux de TVA moyen de la société (décimal, ex. 0.21), configurable depuis sa fiche — sert à
+  // corriger les délais de paiement : les créances/dettes commerciales (codes 40/41 et 44) sont
+  // TVA comprise, alors que le CA et les achats/services (70, 60, 61) sont hors TVA.
+  const tauxTVA = (typeof societeChoisie?.tauxTVA === 'number') ? societeChoisie.tauxTVA : 0.21;
+
+  const periode = periodeDe(exercice);
+  const kpis = calculerKPI(exercice.valeurs, exercice.totaux, periode.nombreMois, tauxTVA, !!exercice.chiffreAffairesEstMargeBrute);
+
   kpiExportCourant = {
     nomSociete: societeChoisie?.nom || '',
     periodeLabel: labelPeriode(exercice),
@@ -1024,7 +1044,7 @@ function renderKpiContent() {
   // Historique par KPI (tous les exercices importés, pour la sparkline), aligné sur l'ordre chronologique.
   const historiquesParCode = {};
   kpiExercicesCache.forEach(ex => {
-    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois);
+    const kpisEx = calculerKPI(ex.valeurs, ex.totaux, periodeDe(ex).nombreMois, tauxTVA, !!ex.chiffreAffairesEstMargeBrute);
     kpisEx.forEach(k => {
       if (!historiquesParCode[k.code]) historiquesParCode[k.code] = [];
       historiquesParCode[k.code].push({ label: labelCourtPeriode(ex), value: k.valeur });
@@ -1036,7 +1056,7 @@ function renderKpiContent() {
   const indexExercice = kpiExercicesCache.findIndex(ex => ex.id === exercice.id);
   const exerciceAnterieur = indexExercice > 0 ? kpiExercicesCache[indexExercice - 1] : null;
   const kpisAnterieurs = exerciceAnterieur
-    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois)
+    ? calculerKPI(exerciceAnterieur.valeurs, exerciceAnterieur.totaux, periodeDe(exerciceAnterieur).nombreMois, tauxTVA, !!exerciceAnterieur.chiffreAffairesEstMargeBrute)
     : null;
   const scoreGlobal = calculerScoreGlobal(kpis);
   const alertes = detecterSignauxAlerte(exercice.valeurs, exercice.totaux, kpis, kpisAnterieurs, societeChoisie?.statutLegal);
@@ -1121,15 +1141,17 @@ function htmlDetailKpi(lignes) {
   if (!lignes || lignes.length === 0) return '';
   const rows = lignes.map(l => `
     <tr>
-      <td>${escapeHtml(l.label)}</td>
-      <td class="detail-source">${escapeHtml(l.source)}</td>
+      <td>
+        <div class="detail-label">${escapeHtml(l.label)}</div>
+        <div class="detail-source">${escapeHtml(l.source)}</div>
+      </td>
       <td class="detail-montant ${l.montant < 0 ? 'neg' : ''}">${l.montant >= 0 ? '+' : ''}${formatEUR(l.montant)}</td>
     </tr>`).join('');
   return `
     <details class="kpi-detail">
       <summary>Voir le détail du calcul</summary>
       <table class="kpi-detail-table">
-        <thead><tr><th>Rubrique</th><th>Source (PCMN / BNB)</th><th>Contribution</th></tr></thead>
+        <thead><tr><th>Rubrique</th><th>Contribution</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </details>`;
