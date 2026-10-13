@@ -1,4 +1,4 @@
-// Projet : Arithmos (arithmos-hla) — Version V13-011
+// Projet : Arithmos (arithmos-hla) — Version V13-013
 // Modèle de rôles : superadmin / admin / lecteur (stocké dans users/{uid}.role)
 // - superadmin & admin : gèrent les sociétés et les accès
 // - lecteur : consulte uniquement les sociétés listées dans son societesAutorisees[]

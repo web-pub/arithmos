@@ -1,4 +1,14 @@
-# Arithmos — V13-011
+# Arithmos — V13-013
+
+## Correctif V13-013 : le radar "Profil global" affichait une branche à 0 pour un groupe non calculable
+Signalé sur le radar "Profil global" : quand aucun des KPI d'un groupe n'est calculable pour l'exercice (ex. aucun des 3 KPI "Délais de paiement"), ce groupe n'a pas de score — mais le radar l'affichait quand même comme une branche tirée jusqu'au centre (valeur 0), ce qui se lit visuellement comme "mauvais score" alors que c'est en réalité "pas de donnée disponible", déformant tout le profil.
+- Corrigé : seuls les groupes réellement calculables pour l'exercice analysé affichent une branche sur le radar — un groupe non calculable est simplement absent de l'étoile (pas de branche à 0), aussi bien à l'écran que dans l'image insérée dans l'export PDF (même graphique réutilisé).
+
+## Nouveau dans la V13-012 : KPI "Vitesse de rotation des stocks"
+- **Nouveau KPI**, dans un nouveau groupe **"Stocks"** (visible dans l'onglet KPI de l'Admin et dans "Mes résultats", avec traçabilité, courbe, export PDF/Excel comme les autres, et inclus dans le score de santé global et le radar "Profil global") : **Vitesse de rotation des stocks** = stocks (code BNB 3) ÷ coût des ventes × durée de l'exercice en jours — en combien de jours les stocks se renouvellent en moyenne.
+- "Coût des ventes" n'a pas de rubrique BNB dédiée dans le schéma abrégé : approximé par achats + services et biens divers (codes 60/61), la même base que le délai de paiement fournisseurs. Comme les stocks et les achats sont tous deux hors TVA, aucune correction TVA n'est nécessaire ici (contrairement aux délais clients/fournisseurs).
+- Se neutralise automatiquement ("Non calculable") pour les dépôts BNB en marge brute, pour la même raison que les autres KPI concernés par le correctif V13-010 (achats/services non disponibles).
+- **Comparaison aux statistiques sectorielles NBB.Stat (secteur par code NACEBEL) demandée mais non réalisée** : aucune API publique documentée n'a été trouvée pour interroger NBB.Stat par code NACEBEL de façon automatisée (seuls les "web services" CBSO existent, réservés aux dépôts de comptes annuels bruts, avec abonnement/paiement, et sans lien avec les ratios sectoriels NBB.Stat). À la demande explicite de Mme Laruelle ("oublie cette étape si tu ne sais pas le faire en automatique"), cette fonctionnalité n'a pas été construite. Reste possible plus tard en saisie manuelle si elle le souhaite.
 
 ## Correctif V13-011 : la correction marge brute (V13-010) ne s'appliquait pas aux exercices déjà importés
 Signalé sur un exercice réel : le badge "À surveiller" du délai de paiement clients affichait encore une valeur chiffrée (146 jours) calculée à partir de la marge brute, et l'onglet Chiffres BNB affichait encore "Chiffre d'affaires" en toutes lettres — alors que ce dépôt ne précise ni CA ni achats. Cause : le nouveau champ `chiffreAffairesEstMargeBrute` (V13-010) n'existe que sur les imports faits **après** ce correctif ; sur les exercices déjà en base, il est absent, donc la détection retombait par défaut sur "non marge brute" et l'ancien comportement (fausser le calcul) continuait de s'afficher.
