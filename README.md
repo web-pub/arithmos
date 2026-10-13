@@ -1,4 +1,18 @@
-# Arithmos — V13-008
+# Arithmos — V13-010
+
+## Correctif V13-010 : marge brute confondue avec le chiffre d'affaires, et lisibilité du détail des KPI
+Correction demandée sur 2 points distincts (dépôt officiel BNB) :
+- **Marge brute ≠ chiffre d'affaires.** Quand une société dépose à la BNB une **marge brute globale** (code 9900) plutôt que de détailler chiffre d'affaires (code 70) et achats (code 60), ce choix est volontaire et légal (ne pas divulguer le détail CA/achats à la concurrence). Mathématiquement, il est **impossible de reconstituer les achats à partir de la seule marge brute** : une infinité de couples CA/achats donnent la même marge. Plutôt que d'utiliser cette marge brute comme si c'était le chiffre d'affaires (ce qui faussait l'analyse), Arithmos :
+  - marque désormais **"Non calculable"** les ratios qui ont besoin du vrai CA ou des achats — marge nette, marge d'exploitation, délai de paiement clients, délai de paiement fournisseurs, écart des délais — avec une explication explicite dans le texte d'analyse de chaque KPI plutôt qu'un chiffre trompeur ;
+  - dans l'onglet **Chiffres BNB**, la ligne concernée est désormais intitulée **"Marge brute (CA non précisé)"** au lieu de "Chiffre d'affaires", avec un encart d'avertissement en haut de l'onglet qui explique la situation.
+  - Un nouveau champ `chiffreAffairesEstMargeBrute` est enregistré sur l'exercice lors de l'import (dépôt officiel BNB uniquement) pour piloter ce comportement partout où l'exercice est utilisé (Admin, Mes résultats, export).
+- **Détail du calcul rendu plus lisible.** Le tableau déroulant "Voir le détail du calcul" de chaque KPI était trop étroit dans les cartes KPI : le montant se retrouvait tronqué/mal aligné. Corrigé en passant à une présentation à 2 colonnes (rubrique + petit code source en dessous, puis montant), avec le montant désormais toujours aligné à droite et jamais coupé. Le préfixe "Code BNB"/"Comptes" devant la source a aussi été retiré : seuls les codes/plages sont affichés, plus concis.
+
+## Correctif V13-009 : délais de paiement TVAC vs HTVA
+Remarque pertinente : les créances et dettes commerciales (codes BNB 40/41 et 44) sont des soldes **TVA comprise**, alors que le chiffre d'affaires et les achats/services (codes 70, 60, 61) sont **hors TVA**. Sans correction, les 2 délais de paiement (V13-008) étaient donc surestimés.
+- **Nouveau champ par société** : "Taux de TVA moyen (%)" dans la fiche société (21 % par défaut, modifiable — utile pour une activité à taux réduit 6 %/12 % ou à taux mixte).
+- Le chiffre d'affaires et les achats/services sont désormais ramenés en TVA comprise (× (1 + taux de TVA)) avant le calcul des délais clients et fournisseurs, pour rester sur la même base que les créances/dettes.
+- Le taux utilisé est maintenant mentionné dans le texte d'analyse de chaque délai ("calculé TVA comprise, à 21,0 %"), pour que ce soit transparent.
 
 ## Nouveau dans la V13-008 : délais de paiement
 - **3 nouveaux KPI**, dans un nouveau groupe **"Délais de paiement"** (KPI #12 à #14, visibles dans l'onglet KPI de l'Admin et dans "Mes résultats", avec traçabilité, courbe, export PDF/Excel comme les autres) :
